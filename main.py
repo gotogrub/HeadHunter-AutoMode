@@ -301,6 +301,7 @@ Examples:
   python main.py --apply            One-time mass apply
   python main.py --apply-query "python developer"
   python main.py --daemon           Auto loop (boost every 4h, apply daily)
+  python main.py --telegram         Run with Telegram bot
   python main.py --cover-letter     Enable cover letters
         """
     )
@@ -313,6 +314,8 @@ Examples:
                         help="Apply with specific search query")
     parser.add_argument("--daemon", action="store_true",
                         help="Run in daemon mode (continuous loop)")
+    parser.add_argument("--telegram", action="store_true",
+                        help="Run with Telegram bot for remote control")
     parser.add_argument("--cover-letter", action="store_true",
                         help="Enable cover letters for applications")
     parser.add_argument("--ai-letters", action="store_true",
@@ -439,6 +442,36 @@ def main():
             use_ai=args.ai_letters
         )
         status("Cover letters enabled", "info")
+
+    # Initialize Telegram bot if requested
+    telegram_bot = None
+    if args.telegram:
+        try:
+            from telegram_bot import HHDestroyerBot, TELEGRAM_AVAILABLE
+            if not TELEGRAM_AVAILABLE:
+                status("Telegram library not installed. Run: pip install python-telegram-bot", "error")
+            else:
+                def do_boost():
+                    return booster.boost_all_resumes()
+
+                def do_apply(query=None):
+                    params = {"text": query} if query else None
+                    return applier.mass_apply(search_params=params)
+
+                telegram_bot = HHDestroyerBot(
+                    on_boost=do_boost,
+                    on_apply=do_apply,
+                    get_stats=applier.get_stats,
+                    filters_manager=filters,
+                    db=db
+                )
+                telegram_bot.run_async()
+                status(f"Telegram bot started! Owner ID: {telegram_bot.owner_id}", "success")
+        except ValueError as e:
+            status(f"Telegram bot error: {e}", "error")
+            status("Set TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_ID environment variables", "warning")
+        except Exception as e:
+            status(f"Failed to start Telegram bot: {e}", "error")
 
     # Handle CLI modes
     if args.daemon:

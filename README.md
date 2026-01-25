@@ -244,6 +244,46 @@ OLLAMA_MODEL=llama2
 - `hh_destroyer_YYYYMMDD_HHMMSS.log` — полный лог сессии
 - `actions_YYYYMMDD_HHMMSS.log` — CSV лог действий (для анализа)
 
+## Telegram бот
+
+Управление ботом через Telegram с защитой по ID владельца.
+
+### Настройка
+
+1. Создайте бота через [@BotFather](https://t.me/BotFather)
+2. Получите токен бота
+3. Узнайте свой Telegram ID через [@userinfobot](https://t.me/userinfobot)
+4. Установите библиотеку: `pip install python-telegram-bot`
+
+```bash
+# Переменные окружения
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+export TELEGRAM_OWNER_ID="987654321"
+
+# Запуск с Telegram ботом
+python main.py --telegram
+```
+
+### Команды бота
+
+| Команда | Описание |
+|---------|----------|
+| `/start` | Главное меню с кнопками |
+| `/boost` | Обновить все резюме |
+| `/apply` | Массовая рассылка откликов |
+| `/apply python` | Рассылка с поисковым запросом |
+| `/stats` | Показать статистику |
+| `/stop` | Остановить текущую задачу |
+| `/blacklist company` | Добавить в черный список |
+| `/whitelist company` | Добавить в белый список |
+| `/filters` | Показать текущие фильтры |
+
+### Безопасность
+
+- Бот отвечает **только** владельцу (по TELEGRAM_OWNER_ID)
+- Все остальные сообщения игнорируются
+- Каждый пользователь создает **своего** бота со своим токеном
+
 ## Структура проекта
 
 ```
@@ -255,6 +295,7 @@ HeadHunter-Destroyer/
 ├── filters.py           # Умные фильтры (blacklist/whitelist)
 ├── cover_letters.py     # Шаблоны сопроводительных писем
 ├── ai_assistant.py      # AI-генерация писем (OpenAI/Ollama)
+├── telegram_bot.py      # Telegram бот для удаленного управления
 ├── logger.py            # Система логирования
 ├── resume_booster.py    # Модуль обновления резюме
 ├── vacancy_applier.py   # Модуль откликов на вакансии
