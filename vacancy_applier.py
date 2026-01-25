@@ -1,7 +1,7 @@
 """
 HeadHunter Destroyer - Vacancy Applier
 Automatically applies to vacancies matching search criteria.
-With database tracking and smart filters.
+With database tracking, smart filters, and cover letters.
 """
 
 import time
@@ -15,16 +15,37 @@ from config import SELECTORS, HH_VACANCY_SEARCH_URL, TIMEOUTS, LIMITS, DEFAULT_S
 class VacancyApplier:
     """Handles mass vacancy applications with filtering and tracking."""
 
-    def __init__(self, page: Page, db=None, filters=None):
+    def __init__(self, page: Page, db=None, filters=None, cover_letters=None, ai_assistant=None, logger=None):
         self.page = page
         self.db = db
         self.filters = filters
+        self.cover_letters = cover_letters
+        self.ai_assistant = ai_assistant
+        self.logger = logger
+
+        # Cover letter settings
+        self.use_cover_letter = False
+        self.cover_letter_template = None  # None = default template
+        self.use_ai_letters = False
 
         self.applied_count = 0
         self.skipped_count = 0
         self.failed_count = 0
         self.filtered_count = 0
         self.applied_ids = set()
+
+    def set_cover_letter_mode(self, enabled: bool, template_name: str = None, use_ai: bool = False):
+        """
+        Configure cover letter mode.
+
+        Args:
+            enabled: Enable cover letters
+            template_name: Template name (None = default)
+            use_ai: Use AI to generate letters (requires ai_assistant)
+        """
+        self.use_cover_letter = enabled
+        self.cover_letter_template = template_name
+        self.use_ai_letters = use_ai and self.ai_assistant and self.ai_assistant.is_enabled()
 
     def build_search_url(self, params: dict = None) -> str:
         """Build vacancy search URL with parameters."""
@@ -157,7 +178,7 @@ class VacancyApplier:
             vacancy["response_button"].click()
             time.sleep(random.uniform(1, 2))
 
-            self._handle_response_modal()
+            self._handle_response_modal(vacancy)
 
             self.applied_ids.add(vacancy["id"])
 
@@ -179,11 +200,12 @@ class VacancyApplier:
         except Exception as e:
             return "failed", str(e)
 
-    def _handle_response_modal(self):
+    def _handle_response_modal(self, vacancy: dict = None):
         """Handle the response modal/dialog that appears after clicking apply."""
         try:
             time.sleep(random.uniform(0.5, 1))
 
+            # Select resume if multiple available
             resume_select = self.page.query_selector('[data-qa="resume-select"]')
             if resume_select:
                 first_resume = self.page.query_selector('[data-qa="resume-select-item"]')
@@ -191,6 +213,11 @@ class VacancyApplier:
                     first_resume.click()
                     time.sleep(random.uniform(0.3, 0.5))
 
+            # Fill cover letter if enabled
+            if self.use_cover_letter and vacancy:
+                self._fill_cover_letter(vacancy)
+
+            # Submit application
             submit_btn = self.page.query_selector('[data-qa="vacancy-response-submit-popup"]')
             if submit_btn:
                 submit_btn.click()
@@ -209,6 +236,56 @@ class VacancyApplier:
 
         except Exception:
             pass
+
+    def _fill_cover_letter(self, vacancy: dict):
+        """Fill cover letter in the response modal."""
+        try:
+            # Find cover letter textarea
+            letter_input = self.page.query_selector(
+                'textarea[data-qa="vacancy-response-letter-text"], '
+                'textarea[name="letter"], '
+                '[data-qa="vacancy-response-popup-form-letter-input"] textarea'
+            )
+
+            if not letter_input:
+                return
+
+            # Generate letter text
+            letter_text = self._generate_cover_letter(vacancy)
+            if not letter_text:
+                return
+
+            # Clear existing text and fill new
+            letter_input.click()
+            letter_input.fill("")
+            time.sleep(0.1)
+            letter_input.fill(letter_text)
+            time.sleep(random.uniform(0.3, 0.5))
+
+            if self.logger:
+                self.logger.debug(f"[LETTER] Filled cover letter for {vacancy.get('title', 'unknown')}")
+
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"[LETTER] Failed to fill cover letter: {e}")
+
+    def _generate_cover_letter(self, vacancy: dict) -> str:
+        """Generate cover letter for vacancy."""
+        # Try AI generation first if enabled
+        if self.use_ai_letters and self.ai_assistant:
+            try:
+                ai_letter = self.ai_assistant.generate_cover_letter(vacancy)
+                if ai_letter:
+                    # Add greeting
+                    return f"Здравствуйте!\n\n{ai_letter}"
+            except Exception:
+                pass
+
+        # Fall back to template
+        if self.cover_letters:
+            return self.cover_letters.render(self.cover_letter_template, vacancy)
+
+        return ""
 
     def has_next_page(self) -> bool:
         """Check if there's a next page of results."""
@@ -270,11 +347,25 @@ class VacancyApplier:
             if on_page:
                 on_page(current_page, len(vacancies))
 
+            # Log page scan
+            if self.logger:
+                self.logger.log_page_scan(current_page, len(vacancies))
+
             for vacancy in vacancies:
                 if self.applied_count >= max_applications:
                     break
 
                 status, reason = self.apply_to_vacancy(vacancy)
+
+                # Log application
+                if self.logger:
+                    self.logger.log_application(
+                        vacancy.get("id", ""),
+                        vacancy.get("title", ""),
+                        vacancy.get("employer", ""),
+                        status,
+                        reason
+                    )
 
                 # Callbacks
                 if status == "filtered" and on_filtered:

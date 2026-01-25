@@ -6,6 +6,11 @@
 
 - **Boost резюме** — автоматическое "обновление" резюме для поднятия в поиске
 - **Mass Apply** — массовая рассылка откликов на вакансии по заданным фильтрам
+- **Умные фильтры** — blacklist/whitelist компаний и слов, фильтр по зарплате
+- **Сопроводительные письма** — шаблоны с плейсхолдерами ({company}, {position})
+- **AI-генерация писем** — OpenAI или локальный Ollama (опционально)
+- **Полное логирование** — все действия записываются в файл
+- **CLI автоматизация** — запуск через cron/systemd
 - **Два режима работы:**
   - Desktop Mode — видимый браузер (Windows/Linux с GUI)
   - Server Mode — headless браузер + TUI интерфейс (для SSH/серверов)
@@ -79,6 +84,8 @@ HH_SERVER_MODE=true ./start.sh
 
 ## Использование
 
+### Интерактивный режим
+
 ```
 [1] Boost all resumes     — Обновить все резюме
 [2] Mass apply            — Откликнуться на вакансии (стандартный поиск)
@@ -88,7 +95,40 @@ HH_SERVER_MODE=true ./start.sh
 [6] Export data           — Экспорт данных в CSV
 [7] Check login status    — Проверить авторизацию
 [8] Clear session         — Очистить сессию (выйти)
+[9] Cover letters         — Управление шаблонами писем
 [0] Exit                  — Выход
+```
+
+### CLI автоматизация
+
+```bash
+# Одноразовое обновление резюме
+python main.py --boost
+
+# Одноразовая массовая рассылка
+python main.py --apply
+
+# Рассылка с поисковым запросом
+python main.py --apply-query "python developer" --max-apply 100
+
+# С сопроводительным письмом
+python main.py --apply --cover-letter
+
+# С AI-генерацией писем
+python main.py --apply --ai-letters
+
+# Daemon режим (бесконечный цикл: boost каждые 4ч + apply)
+python main.py --daemon
+```
+
+### Cron автоматизация
+
+```bash
+# Обновлять резюме каждые 4 часа
+0 */4 * * * cd /path/to/hh-destroyer && python main.py --boost
+
+# Рассылка каждое утро в 9:00
+0 9 * * * cd /path/to/hh-destroyer && python main.py --apply --max-apply 50
 ```
 
 ### Параметры поиска вакансий
@@ -150,15 +190,72 @@ set HH_BROWSER=chrome && python main.py
 HH_BROWSER=firefox ./start.sh
 ```
 
+## Сопроводительные письма
+
+Бот поддерживает автоматическую отправку сопроводительных писем при отклике.
+
+### Шаблоны
+
+Встроенные шаблоны с плейсхолдерами:
+- `{company}` — название компании
+- `{position}` — название вакансии
+- `{salary}` — зарплата (если указана)
+- `{name}` — ваше имя
+- `{date}` — текущая дата
+
+Пример шаблона:
+```
+Здравствуйте!
+
+Меня заинтересовала вакансия "{position}" в компании {company}.
+Готов обсудить детали сотрудничества.
+
+С уважением
+```
+
+### AI-генерация писем
+
+Для персонализированных писем можно использовать AI:
+
+```bash
+# OpenAI (требуется API ключ)
+export OPENAI_API_KEY=sk-...
+python main.py --apply --ai-letters
+
+# Ollama (локальный LLM)
+# Запустите Ollama: ollama serve
+export OLLAMA_HOST=http://localhost:11434
+export OLLAMA_MODEL=llama2
+python main.py --apply --ai-letters
+```
+
+Переменные для AI:
+```bash
+HH_AI_PROVIDER=auto      # auto, openai, ollama, disabled
+OPENAI_API_KEY=sk-...    # Ключ OpenAI
+OPENAI_MODEL=gpt-3.5-turbo
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama2
+```
+
+## Логирование
+
+Все действия логируются в `browser_data/logs/`:
+- `hh_destroyer_YYYYMMDD_HHMMSS.log` — полный лог сессии
+- `actions_YYYYMMDD_HHMMSS.log` — CSV лог действий (для анализа)
+
 ## Структура проекта
 
 ```
 HeadHunter-Destroyer/
-├── main.py              # Точка входа
+├── main.py              # Точка входа + CLI
 ├── browser.py           # Управление браузером (Chrome/Edge/Firefox)
 ├── config.py            # Конфигурация
 ├── database.py          # SQLite база данных
 ├── filters.py           # Умные фильтры (blacklist/whitelist)
+├── cover_letters.py     # Шаблоны сопроводительных писем
+├── ai_assistant.py      # AI-генерация писем (OpenAI/Ollama)
+├── logger.py            # Система логирования
 ├── resume_booster.py    # Модуль обновления резюме
 ├── vacancy_applier.py   # Модуль откликов на вакансии
 ├── tui.py               # Text UI для server mode

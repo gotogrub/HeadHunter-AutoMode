@@ -79,6 +79,7 @@ class TUI:
             table.add_row("6", "Export data to CSV")
             table.add_row("7", "Check login status")
             table.add_row("8", "Clear session (logout)")
+            table.add_row("9", "Manage cover letter templates")
             table.add_row("0", "Exit")
 
             self.console.print(table)
@@ -92,6 +93,7 @@ class TUI:
             print("[6] Export data to CSV")
             print("[7] Check login status")
             print("[8] Clear session")
+            print("[9] Manage cover letters")
             print("[0] Exit")
             return input("Select option: ")
 

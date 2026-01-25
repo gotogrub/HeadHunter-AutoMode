@@ -5,10 +5,17 @@ Automates resume boosting and vacancy applications on HH.ru
 Supports two modes:
 - Desktop Mode (Windows/Linux with GUI): Visual browser window
 - Server Mode (Linux headless): TUI interface, headless browser
+
+CLI flags for automation:
+  --daemon      Run in daemon mode (auto boost + apply loop)
+  --boost       One-time resume boost and exit
+  --apply       One-time mass apply and exit
+  --apply-query "text"  Apply with specific search query
 """
 
 import sys
 import signal
+import argparse
 from datetime import datetime
 
 from config import SERVER_MODE, IS_WINDOWS
@@ -17,6 +24,9 @@ from resume_booster import ResumeBooster
 from vacancy_applier import VacancyApplier
 from database import Database
 from filters import VacancyFilter, setup_default_filters
+from cover_letters import CoverLetterManager
+from ai_assistant import get_ai_assistant
+from logger import setup_logger, get_logger
 
 # Import appropriate UI
 if SERVER_MODE:
@@ -68,6 +78,7 @@ def print_menu():
 {Fore.GREEN}[6]{Style.RESET_ALL} Export data to CSV
 {Fore.GREEN}[7]{Style.RESET_ALL} Check login status
 {Fore.GREEN}[8]{Style.RESET_ALL} Clear session (logout)
+{Fore.GREEN}[9]{Style.RESET_ALL} Manage cover letter templates
 {Fore.GREEN}[0]{Style.RESET_ALL} Exit
 """)
         return input(f"{Fore.GREEN}Select option: {Style.RESET_ALL}").strip()
@@ -278,8 +289,81 @@ def export_data(db: Database):
         status(f"Export failed: {e}", "error")
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="HeadHunter Destroyer - Automate your job search",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                    Interactive menu
+  python main.py --boost            One-time resume boost
+  python main.py --apply            One-time mass apply
+  python main.py --apply-query "python developer"
+  python main.py --daemon           Auto loop (boost every 4h, apply daily)
+  python main.py --cover-letter     Enable cover letters
+        """
+    )
+
+    parser.add_argument("--boost", action="store_true",
+                        help="One-time resume boost and exit")
+    parser.add_argument("--apply", action="store_true",
+                        help="One-time mass apply and exit")
+    parser.add_argument("--apply-query", type=str, metavar="QUERY",
+                        help="Apply with specific search query")
+    parser.add_argument("--daemon", action="store_true",
+                        help="Run in daemon mode (continuous loop)")
+    parser.add_argument("--cover-letter", action="store_true",
+                        help="Enable cover letters for applications")
+    parser.add_argument("--ai-letters", action="store_true",
+                        help="Use AI to generate cover letters")
+    parser.add_argument("--max-apply", type=int, default=200,
+                        help="Maximum applications per run (default: 200)")
+
+    return parser.parse_args()
+
+
+def run_daemon_mode(booster, applier, db, logger):
+    """Run in daemon mode - continuous loop with auto boost and apply."""
+    import time as time_module
+
+    logger.info("Starting daemon mode...")
+    status("Daemon mode started. Press Ctrl+C to stop.", "info")
+
+    while True:
+        try:
+            # Boost resumes if possible
+            if booster.can_update():
+                logger.info("Auto-boosting resumes...")
+                run_resume_boost(booster)
+            else:
+                mins = booster.minutes_until_next_update()
+                logger.debug(f"Next boost in {mins} minutes")
+
+            # Run mass apply
+            logger.info("Starting auto-apply...")
+            run_mass_apply(applier)
+
+            # Wait before next cycle (4 hours)
+            logger.info("Cycle complete. Waiting 4 hours...")
+            time_module.sleep(4 * 60 * 60)
+
+        except KeyboardInterrupt:
+            logger.info("Daemon stopped by user")
+            break
+        except Exception as e:
+            logger.error(f"Daemon error: {e}")
+            time_module.sleep(60)  # Wait 1 min on error
+
+
 def main():
     """Main entry point."""
+    args = parse_args()
+
+    # Initialize logger
+    logger = setup_logger()
+    logger.log_session_start()
+
     print_banner()
 
     # Initialize database
@@ -290,6 +374,14 @@ def main():
     # Initialize filters
     filters = VacancyFilter(db)
 
+    # Initialize cover letters
+    cover_letters = CoverLetterManager(db)
+
+    # Initialize AI assistant (optional)
+    ai_assistant = get_ai_assistant(db)
+    if ai_assistant.is_enabled():
+        status(f"AI Assistant: {ai_assistant.provider} ({ai_assistant.model})", "info")
+
     if SERVER_MODE:
         ui.status("Running in SERVER MODE (headless browser)", "info")
         ui.start_session()
@@ -298,6 +390,7 @@ def main():
     browser_manager = BrowserManager()
 
     def signal_handler(sig, frame):
+        logger.log_session_end()
         status("Shutting down...", "warning")
         db.close()
         browser_manager.stop()
@@ -311,26 +404,69 @@ def main():
     try:
         page = browser_manager.start(use_existing_session=True)
     except Exception as e:
+        logger.error(f"Failed to start browser: {e}")
         status(f"Failed to start browser: {e}", "error")
         if IS_WINDOWS:
-            status("Make sure Edge is closed before running this script", "warning")
+            status("Make sure the browser is closed before running", "warning")
         sys.exit(1)
 
     # Check login status
     status("Checking login status...", "info")
     if browser_manager.is_logged_in():
         status("Successfully connected to HH.ru!", "success")
+        logger.info("Logged in to HH.ru")
     else:
         status("Not logged in to HH.ru", "warning")
         if SERVER_MODE:
             status("In server mode, login once with GUI first, then copy browser_data/ to server.", "warning")
         browser_manager.wait_for_login()
 
-    # Initialize modules with database and filters
+    # Initialize modules with all dependencies
     booster = ResumeBooster(page)
-    applier = VacancyApplier(page, db=db, filters=filters)
+    applier = VacancyApplier(
+        page,
+        db=db,
+        filters=filters,
+        cover_letters=cover_letters,
+        ai_assistant=ai_assistant,
+        logger=logger
+    )
 
-    # Main loop
+    # Configure cover letters if requested
+    if args.cover_letter or args.ai_letters:
+        applier.set_cover_letter_mode(
+            enabled=True,
+            use_ai=args.ai_letters
+        )
+        status("Cover letters enabled", "info")
+
+    # Handle CLI modes
+    if args.daemon:
+        run_daemon_mode(booster, applier, db, logger)
+        logger.log_session_end()
+        db.close()
+        browser_manager.stop()
+        return
+
+    if args.boost:
+        run_resume_boost(booster)
+        logger.log_session_end()
+        db.close()
+        browser_manager.stop()
+        return
+
+    if args.apply or args.apply_query:
+        params = {}
+        if args.apply_query:
+            params["text"] = args.apply_query
+        params["_max_applications"] = args.max_apply
+        run_mass_apply(applier, params if params else None)
+        logger.log_session_end()
+        db.close()
+        browser_manager.stop()
+        return
+
+    # Interactive main loop
     while True:
         try:
             choice = print_menu()
@@ -356,6 +492,8 @@ def main():
             elif choice == "8":
                 browser_manager.clear_session()
                 status("Session cleared. Restart to login again.", "success")
+            elif choice == "9":
+                manage_cover_letters(cover_letters)
             elif choice == "0":
                 break
             else:
@@ -364,13 +502,69 @@ def main():
         except KeyboardInterrupt:
             break
         except Exception as e:
+            logger.error(f"Error: {e}")
             status(f"Error: {e}", "error")
 
     # Cleanup
+    logger.log_session_end()
     status("Closing...", "info")
     db.close()
     browser_manager.stop()
     status("Goodbye!", "success")
+
+
+def manage_cover_letters(cover_letters: CoverLetterManager):
+    """Manage cover letter templates."""
+    while True:
+        print(f"\n{Fore.CYAN}[*] Cover Letter Templates:{Style.RESET_ALL}")
+        templates = cover_letters.get_all_templates()
+
+        for i, t in enumerate(templates, 1):
+            default_mark = " [DEFAULT]" if t["is_default"] else ""
+            print(f"  {i}. {t['name']}{default_mark} (used {t['use_count']}x)")
+
+        print(f"\n{Fore.GREEN}[a]{Style.RESET_ALL} Add new template")
+        print(f"{Fore.GREEN}[d]{Style.RESET_ALL} Set default template")
+        print(f"{Fore.GREEN}[v]{Style.RESET_ALL} View template")
+        print(f"{Fore.GREEN}[p]{Style.RESET_ALL} Show placeholders")
+        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Back to main menu")
+
+        choice = input(f"{Fore.GREEN}Select: {Style.RESET_ALL}").strip().lower()
+
+        if choice == "a":
+            name = input("  Template name: ").strip()
+            if name:
+                print("  Enter template content (end with empty line):")
+                lines = []
+                while True:
+                    line = input()
+                    if line == "":
+                        break
+                    lines.append(line)
+                if lines:
+                    cover_letters.add_template(name, "\n".join(lines))
+                    status(f"Template '{name}' added", "success")
+
+        elif choice == "d":
+            num = input("  Template number to set as default: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                template_name = templates[int(num) - 1]["name"]
+                cover_letters.set_default(template_name)
+                status(f"'{template_name}' set as default", "success")
+
+        elif choice == "v":
+            num = input("  Template number to view: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                t = templates[int(num) - 1]
+                print(f"\n{Fore.CYAN}--- {t['name']} ---{Style.RESET_ALL}")
+                print(t["content"])
+                print(f"{Fore.CYAN}---{Style.RESET_ALL}")
+
+        elif choice == "p":
+            print(f"\n{cover_letters.get_placeholders_help()}")
+
+        elif choice == "0":
+            break
 
 
 if __name__ == "__main__":
