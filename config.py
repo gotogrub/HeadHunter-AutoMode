@@ -25,6 +25,11 @@ else:
 HEADLESS = SERVER_MODE  # Headless when in server mode
 SLOW_MO = 50 if SERVER_MODE else 100  # Faster in headless mode
 
+# Browser selection: "chrome", "edge", "firefox", "auto"
+# "auto" = Chrome on all platforms, Edge as fallback on Windows
+# Can be overridden via HH_BROWSER env var
+BROWSER = os.environ.get("HH_BROWSER", "auto").lower()
+
 # HH.ru URLs
 HH_BASE_URL = "https://hh.ru"
 HH_RESUMES_URL = "https://hh.ru/applicant/resumes"

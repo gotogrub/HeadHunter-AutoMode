@@ -13,7 +13,7 @@
 ## Требования
 
 - Python 3.8+
-- Microsoft Edge (Windows) или Chromium (Linux)
+- Браузер на выбор: Chrome, Edge, Firefox или Chromium
 
 ## Установка
 
@@ -21,7 +21,7 @@
 
 ```batch
 pip install -r requirements.txt
-playwright install msedge chromium
+playwright install chrome msedge firefox chromium
 ```
 
 Или просто запустите `install.bat`
@@ -84,8 +84,10 @@ HH_SERVER_MODE=true ./start.sh
 [2] Mass apply            — Откликнуться на вакансии (стандартный поиск)
 [3] Mass apply custom     — Откликнуться с настройкой фильтров
 [4] Show statistics       — Показать статистику сессии
-[5] Check login status    — Проверить авторизацию
-[6] Clear session         — Очистить сессию (выйти)
+[5] Manage filters        — Управление фильтрами (blacklist/whitelist)
+[6] Export data           — Экспорт данных в CSV
+[7] Check login status    — Проверить авторизацию
+[8] Clear session         — Очистить сессию (выйти)
 [0] Exit                  — Выход
 ```
 
@@ -126,6 +128,26 @@ TIMEOUTS = {
 
 ```bash
 HH_SERVER_MODE=true   # Принудительно включить server mode
+HH_BROWSER=chrome     # Выбор браузера: chrome, edge, firefox, auto
+```
+
+### Выбор браузера
+
+| Значение | Описание |
+|----------|----------|
+| `auto` | Автоматически: Chrome → Edge (Windows) → Chromium → Firefox |
+| `chrome` | Google Chrome |
+| `edge` | Microsoft Edge (только Windows) |
+| `firefox` | Mozilla Firefox |
+
+Пример запуска с конкретным браузером:
+
+```bash
+# Windows
+set HH_BROWSER=chrome && python main.py
+
+# Linux
+HH_BROWSER=firefox ./start.sh
 ```
 
 ## Структура проекта
@@ -133,8 +155,10 @@ HH_SERVER_MODE=true   # Принудительно включить server mode
 ```
 HeadHunter-Destroyer/
 ├── main.py              # Точка входа
-├── browser.py           # Управление браузером
+├── browser.py           # Управление браузером (Chrome/Edge/Firefox)
 ├── config.py            # Конфигурация
+├── database.py          # SQLite база данных
+├── filters.py           # Умные фильтры (blacklist/whitelist)
 ├── resume_booster.py    # Модуль обновления резюме
 ├── vacancy_applier.py   # Модуль откликов на вакансии
 ├── tui.py               # Text UI для server mode
@@ -143,7 +167,8 @@ HeadHunter-Destroyer/
 ├── install.sh           # Установщик Linux
 ├── start.bat            # Запуск Windows
 ├── start.sh             # Запуск Linux
-└── browser_data/        # Данные сессии (создается автоматически)
+├── docs/                # Документация и roadmap
+└── browser_data/        # Данные сессии и БД (создается автоматически)
 ```
 
 ## Server Mode (TUI)

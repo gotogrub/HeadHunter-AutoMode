@@ -9,15 +9,18 @@ echo [1/3] Installing Python dependencies...
 pip install -r requirements.txt
 
 echo.
-echo [2/3] Installing Playwright browsers...
-playwright install chromium msedge
+echo [2/3] Installing Playwright browsers (Chrome, Edge, Firefox)...
+playwright install chrome msedge firefox chromium
 
 echo.
 echo [3/3] Installation complete!
 echo.
 echo ========================================
-echo  IMPORTANT: Close Microsoft Edge before
-echo  running the bot to use your session!
+echo  Browser selection (set HH_BROWSER):
+echo    auto    - Auto-detect (default)
+echo    chrome  - Google Chrome
+echo    edge    - Microsoft Edge
+echo    firefox - Mozilla Firefox
 echo ========================================
 echo.
 echo Run 'start.bat' to launch the bot.

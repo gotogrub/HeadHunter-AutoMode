@@ -18,8 +18,8 @@ echo "[1/3] Installing Python dependencies..."
 $PIP install -r requirements.txt
 
 echo
-echo "[2/3] Installing Playwright browsers..."
-$PLAYWRIGHT install chromium
+echo "[2/3] Installing Playwright browsers (Chrome, Firefox, Chromium)..."
+$PLAYWRIGHT install chrome firefox chromium
 
 # Install system dependencies for Playwright on Linux
 echo "[*] Installing system dependencies..."
@@ -42,6 +42,10 @@ echo
 echo " Server mode (headless, for SSH):"
 echo "   HH_SERVER_MODE=true ./start.sh"
 echo "   or just run on headless system"
+echo
+echo " Browser selection:"
+echo "   HH_BROWSER=chrome ./start.sh"
+echo "   Options: auto, chrome, firefox"
 echo
 echo " First-time login:"
 echo "   1. Run on desktop with GUI first"

@@ -9,7 +9,7 @@ import json
 import shutil
 import platform
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
-from config import HEADLESS, SLOW_MO, USER_DATA_DIR, TIMEOUTS
+from config import HEADLESS, SLOW_MO, USER_DATA_DIR, TIMEOUTS, BROWSER
 
 
 def get_platform():
@@ -27,12 +27,20 @@ def get_platform():
 class BrowserManager:
     """Manages browser instance with persistent session support."""
 
-    def __init__(self):
+    def __init__(self, browser: str = None):
+        """
+        Initialize browser manager.
+
+        Args:
+            browser: Browser to use ("chrome", "edge", "firefox", "auto")
+                     If None, uses BROWSER from config
+        """
         self.playwright = None
         self.browser: Browser = None
         self.context: BrowserContext = None
         self.page: Page = None
         self.platform = get_platform()
+        self.browser_type = browser or BROWSER
         self.cookies_file = os.path.join(USER_DATA_DIR, "hh_cookies.json")
 
     def start(self, use_existing_session: bool = True) -> Page:
@@ -77,11 +85,8 @@ class BrowserManager:
             "ignore_default_args": ["--enable-automation"],
         }
 
-        # Try to start browser based on platform
-        if self.platform == "windows":
-            self.context = self._start_windows_browser(context_options)
-        else:
-            self.context = self._start_linux_browser(context_options)
+        # Start selected browser
+        self.context = self._start_browser(context_options)
 
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
@@ -94,32 +99,97 @@ class BrowserManager:
 
         return self.page
 
-    def _start_windows_browser(self, options: dict) -> BrowserContext:
-        """Start browser on Windows (prefer Edge, fallback to Chromium)."""
+    def _start_browser(self, options: dict) -> BrowserContext:
+        """
+        Start browser based on selection.
+
+        Supported browsers:
+            - chrome: Google Chrome
+            - edge: Microsoft Edge (Windows only)
+            - firefox: Mozilla Firefox
+            - auto: Chrome first, then Edge (Windows), then Firefox
+        """
+        browser = self.browser_type.lower()
+
+        # Firefox needs different options
+        firefox_options = {k: v for k, v in options.items()
+                          if k not in ("args", "ignore_default_args")}
+
+        if browser == "chrome":
+            return self._try_chrome(options)
+
+        elif browser == "edge":
+            return self._try_edge(options)
+
+        elif browser == "firefox":
+            return self._try_firefox(firefox_options)
+
+        else:  # auto
+            return self._try_auto(options, firefox_options)
+
+    def _try_chrome(self, options: dict) -> BrowserContext:
+        """Try to start Google Chrome."""
+        print("[*] Starting Google Chrome...")
         try:
-            print("[*] Starting Microsoft Edge...")
+            return self.playwright.chromium.launch_persistent_context(
+                channel="chrome",
+                **options
+            )
+        except Exception as e:
+            print(f"[!] Chrome failed: {e}")
+            print("[*] Trying Chromium...")
+            return self.playwright.chromium.launch_persistent_context(**options)
+
+    def _try_edge(self, options: dict) -> BrowserContext:
+        """Try to start Microsoft Edge."""
+        print("[*] Starting Microsoft Edge...")
+        try:
             return self.playwright.chromium.launch_persistent_context(
                 channel="msedge",
                 **options
             )
         except Exception as e:
             print(f"[!] Edge failed: {e}")
-            print("[*] Falling back to Chromium...")
-            return self.playwright.chromium.launch_persistent_context(**options)
+            raise RuntimeError("Edge is not available. Try using chrome or firefox.")
 
-    def _start_linux_browser(self, options: dict) -> BrowserContext:
-        """Start browser on Linux (Chromium)."""
+    def _try_firefox(self, options: dict) -> BrowserContext:
+        """Try to start Mozilla Firefox."""
+        print("[*] Starting Mozilla Firefox...")
+        return self.playwright.firefox.launch_persistent_context(**options)
+
+    def _try_auto(self, options: dict, firefox_options: dict) -> BrowserContext:
+        """Auto-detect best available browser."""
+        # Try Chrome first
         try:
-            # Try Chrome first (if installed)
-            print("[*] Starting Chromium...")
+            print("[*] Starting Google Chrome...")
+            return self.playwright.chromium.launch_persistent_context(
+                channel="chrome",
+                **options
+            )
+        except Exception as e:
+            print(f"[!] Chrome not found: {e}")
+
+        # Try Edge on Windows
+        if self.platform == "windows":
+            try:
+                print("[*] Trying Microsoft Edge...")
+                return self.playwright.chromium.launch_persistent_context(
+                    channel="msedge",
+                    **options
+                )
+            except Exception as e:
+                print(f"[!] Edge failed: {e}")
+
+        # Try plain Chromium
+        try:
+            print("[*] Trying Chromium...")
             return self.playwright.chromium.launch_persistent_context(**options)
         except Exception as e:
             print(f"[!] Chromium failed: {e}")
-            # Try Firefox as fallback
-            print("[*] Trying Firefox...")
-            options.pop("args", None)
-            options.pop("ignore_default_args", None)
-            return self.playwright.firefox.launch_persistent_context(**options)
+
+        # Last resort: Firefox
+        print("[*] Trying Firefox...")
+        return self.playwright.firefox.launch_persistent_context(**firefox_options)
 
     def _load_cookies(self):
         """Load cookies from file if exists."""
