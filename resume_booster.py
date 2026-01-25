@@ -30,7 +30,6 @@ class ResumeBooster:
                 title_el = card.query_selector(SELECTORS["resume_title"])
                 title = title_el.inner_text() if title_el else "Unknown"
 
-                # Get resume link
                 link_el = card.query_selector("a[href*='/resume/']")
                 link = link_el.get_attribute("href") if link_el else None
 
@@ -39,8 +38,8 @@ class ResumeBooster:
                     "link": link,
                     "element": card
                 })
-            except Exception as e:
-                print(f"[!] Error parsing resume card: {e}")
+            except Exception:
+                pass
 
         return resumes
 
@@ -50,7 +49,6 @@ class ResumeBooster:
         This triggers HH.ru to refresh the resume's timestamp.
         """
         try:
-            # Navigate to resume edit page
             edit_url = resume_url.replace("/resume/", "/resume/edit/")
             if "?" in edit_url:
                 edit_url = edit_url.split("?")[0]
@@ -64,12 +62,10 @@ class ResumeBooster:
                 about_btn.click()
                 time.sleep(random.uniform(0.5, 1))
 
-                # Find textarea and add/remove space
                 textarea = self.page.query_selector("textarea")
                 if textarea:
                     current_text = textarea.input_value()
 
-                    # Toggle trailing space
                     if current_text.endswith(" "):
                         new_text = current_text.rstrip()
                     else:
@@ -78,12 +74,10 @@ class ResumeBooster:
                     textarea.fill(new_text)
                     time.sleep(random.uniform(0.3, 0.5))
 
-                    # Submit changes
                     submit_btn = self.page.query_selector(SELECTORS["submit_button"])
                     if submit_btn:
                         submit_btn.click()
                         time.sleep(random.uniform(1, 2))
-
                         self.last_update_time = datetime.now()
                         return True
 
@@ -98,38 +92,42 @@ class ResumeBooster:
             return False
 
         except PlaywrightTimeout:
-            print("[!] Timeout while updating resume")
             return False
-        except Exception as e:
-            print(f"[!] Error updating resume: {e}")
+        except Exception:
             return False
 
-    def boost_all_resumes(self) -> dict:
-        """Update all user's resumes."""
+    def boost_all_resumes(self, callback=None) -> dict:
+        """
+        Update all user's resumes.
+
+        Args:
+            callback: Optional callback function(title, status) for TUI
+        """
         results = {
             "success": [],
             "failed": []
         }
 
         resumes = self.get_resumes()
-        print(f"\n[*] Found {len(resumes)} resume(s)")
 
         for resume in resumes:
             if not resume["link"]:
-                print(f"[!] Skipping resume without link: {resume['title']}")
+                if callback:
+                    callback(resume["title"], "failed")
                 results["failed"].append(resume["title"])
                 continue
 
-            print(f"[*] Updating: {resume['title']}")
+            success = self.update_resume_touch(f"https://hh.ru{resume['link']}")
 
-            if self.update_resume_touch(f"https://hh.ru{resume['link']}"):
-                print(f"[+] Successfully updated: {resume['title']}")
+            if success:
+                if callback:
+                    callback(resume["title"], "success")
                 results["success"].append(resume["title"])
             else:
-                print(f"[-] Failed to update: {resume['title']}")
+                if callback:
+                    callback(resume["title"], "failed")
                 results["failed"].append(resume["title"])
 
-            # Delay between updates
             time.sleep(random.uniform(*TIMEOUTS["between_actions"]))
 
         return results
