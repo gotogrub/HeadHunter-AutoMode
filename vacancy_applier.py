@@ -1,6 +1,7 @@
 """
 HeadHunter Destroyer - Vacancy Applier
 Automatically applies to vacancies matching search criteria.
+With database tracking and smart filters.
 """
 
 import time
@@ -12,13 +13,17 @@ from config import SELECTORS, HH_VACANCY_SEARCH_URL, TIMEOUTS, LIMITS, DEFAULT_S
 
 
 class VacancyApplier:
-    """Handles mass vacancy applications."""
+    """Handles mass vacancy applications with filtering and tracking."""
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, db=None, filters=None):
         self.page = page
+        self.db = db
+        self.filters = filters
+
         self.applied_count = 0
         self.skipped_count = 0
         self.failed_count = 0
+        self.filtered_count = 0
         self.applied_ids = set()
 
     def build_search_url(self, params: dict = None) -> str:
@@ -58,12 +63,24 @@ class VacancyApplier:
                 employer_el = card.query_selector(SELECTORS["vacancy_employer"])
                 employer = employer_el.inner_text() if employer_el else "Unknown"
 
+                # Try to get salary info
+                salary_from, salary_to = self._parse_salary(card)
+
+                # Get vacancy URL
+                url = None
+                link_el = card.query_selector("a[href*='/vacancy/']")
+                if link_el:
+                    url = link_el.get_attribute("href")
+
                 response_btn = card.query_selector(SELECTORS["vacancy_response_button"])
 
                 vacancies.append({
                     "id": vacancy_id,
                     "title": title.strip(),
                     "employer": employer.strip(),
+                    "salary_from": salary_from,
+                    "salary_to": salary_to,
+                    "url": url,
                     "response_button": response_btn,
                     "card": card
                 })
@@ -73,16 +90,50 @@ class VacancyApplier:
 
         return vacancies
 
-    def apply_to_vacancy(self, vacancy: dict) -> str:
+    def _parse_salary(self, card) -> tuple:
+        """Parse salary from vacancy card."""
+        try:
+            salary_el = card.query_selector('[data-qa="vacancy-serp__vacancy-compensation"]')
+            if salary_el:
+                salary_text = salary_el.inner_text()
+                # Parse salary range like "100 000 - 150 000 ₽"
+                numbers = re.findall(r'[\d\s]+', salary_text)
+                numbers = [int(n.replace(' ', '').strip()) for n in numbers if n.strip()]
+                if len(numbers) >= 2:
+                    return numbers[0], numbers[1]
+                elif len(numbers) == 1:
+                    if 'от' in salary_text.lower():
+                        return numbers[0], None
+                    elif 'до' in salary_text.lower():
+                        return None, numbers[0]
+                    return numbers[0], numbers[0]
+        except Exception:
+            pass
+        return None, None
+
+    def apply_to_vacancy(self, vacancy: dict) -> tuple[str, str]:
         """
         Apply to a single vacancy.
-        Returns: 'applied', 'skipped', or 'failed'
+        Returns: (status, reason)
+            status: 'applied', 'skipped', 'failed', 'filtered'
+            reason: explanation
         """
+        # Check filters first
+        if self.filters:
+            should_apply, reason = self.filters.should_apply(vacancy)
+            if not should_apply:
+                return "filtered", reason
+
         if not vacancy.get("response_button"):
-            return "skipped"
+            return "skipped", "no_button"
 
         if vacancy["id"] in self.applied_ids:
-            return "skipped"
+            return "skipped", "already_in_session"
+
+        # Check database
+        if self.db and self.db.is_already_applied(vacancy["id"]):
+            self.applied_ids.add(vacancy["id"])
+            return "skipped", "already_in_db"
 
         try:
             vacancy["response_button"].scroll_into_view_if_needed()
@@ -91,7 +142,17 @@ class VacancyApplier:
             btn_text = vacancy["response_button"].inner_text().lower()
             if "откликнулись" in btn_text or "responded" in btn_text:
                 self.applied_ids.add(vacancy["id"])
-                return "skipped"
+                # Save to DB as already applied
+                if self.db:
+                    self.db.add_application(
+                        vacancy_id=vacancy["id"],
+                        title=vacancy["title"],
+                        employer=vacancy["employer"],
+                        salary_from=vacancy.get("salary_from"),
+                        salary_to=vacancy.get("salary_to"),
+                        url=vacancy.get("url")
+                    )
+                return "skipped", "already_responded"
 
             vacancy["response_button"].click()
             time.sleep(random.uniform(1, 2))
@@ -99,12 +160,24 @@ class VacancyApplier:
             self._handle_response_modal()
 
             self.applied_ids.add(vacancy["id"])
-            return "applied"
+
+            # Save to database
+            if self.db:
+                self.db.add_application(
+                    vacancy_id=vacancy["id"],
+                    title=vacancy["title"],
+                    employer=vacancy["employer"],
+                    salary_from=vacancy.get("salary_from"),
+                    salary_to=vacancy.get("salary_to"),
+                    url=vacancy.get("url")
+                )
+
+            return "applied", "success"
 
         except PlaywrightTimeout:
-            return "failed"
-        except Exception:
-            return "failed"
+            return "failed", "timeout"
+        except Exception as e:
+            return "failed", str(e)
 
     def _handle_response_modal(self):
         """Handle the response modal/dialog that appears after clicking apply."""
@@ -161,7 +234,10 @@ class VacancyApplier:
         Args:
             search_params: Search filter parameters
             max_applications: Maximum number of applications
-            callbacks: Dict with 'on_vacancy' and 'on_page' callback functions
+            callbacks: Dict with callback functions:
+                - on_vacancy(title, employer, status, reason)
+                - on_page(page_num, vacancies_count)
+                - on_filtered(title, employer, reason)
         """
         if max_applications is None:
             max_applications = LIMITS["max_responses_per_session"]
@@ -170,12 +246,14 @@ class VacancyApplier:
             "applied": [],
             "skipped": [],
             "failed": [],
+            "filtered": [],
             "pages_scanned": 0
         }
 
-        # Callbacks for TUI
+        # Callbacks
         on_vacancy = callbacks.get("on_vacancy") if callbacks else None
         on_page = callbacks.get("on_page") if callbacks else None
+        on_filtered = callbacks.get("on_filtered") if callbacks else None
 
         search_url = self.build_search_url(search_params)
         self.page.goto(search_url, wait_until="domcontentloaded")
@@ -196,19 +274,31 @@ class VacancyApplier:
                 if self.applied_count >= max_applications:
                     break
 
-                status = self.apply_to_vacancy(vacancy)
+                status, reason = self.apply_to_vacancy(vacancy)
 
-                # Call TUI callback
-                if on_vacancy:
+                # Callbacks
+                if status == "filtered" and on_filtered:
+                    on_filtered(vacancy["title"], vacancy["employer"], reason)
+                elif on_vacancy:
                     on_vacancy(vacancy["title"], vacancy["employer"], status)
 
+                # Update counters and results
                 if status == "applied":
                     self.applied_count += 1
                     results["applied"].append({
                         "id": vacancy["id"],
                         "title": vacancy["title"],
                         "employer": vacancy["employer"],
+                        "salary_from": vacancy.get("salary_from"),
+                        "salary_to": vacancy.get("salary_to"),
                         "status": status
+                    })
+                elif status == "filtered":
+                    self.filtered_count += 1
+                    results["filtered"].append({
+                        "title": vacancy["title"],
+                        "employer": vacancy["employer"],
+                        "reason": reason
                     })
                 elif status == "skipped":
                     self.skipped_count += 1
@@ -217,8 +307,12 @@ class VacancyApplier:
                     self.failed_count += 1
                     results["failed"].append(vacancy["title"])
 
-                delay = random.uniform(*TIMEOUTS["between_responses"])
-                time.sleep(delay)
+                # Delay only if actually applied
+                if status == "applied":
+                    delay = random.uniform(*TIMEOUTS["between_responses"])
+                    time.sleep(delay)
+                else:
+                    time.sleep(random.uniform(0.2, 0.5))
 
             if self.applied_count < max_applications and self.has_next_page():
                 if not self.go_to_next_page():
@@ -231,9 +325,19 @@ class VacancyApplier:
 
     def get_stats(self) -> dict:
         """Get current session statistics."""
-        return {
+        stats = {
             "applied": self.applied_count,
             "skipped": self.skipped_count,
             "failed": self.failed_count,
+            "filtered": self.filtered_count,
             "total_processed": len(self.applied_ids)
         }
+
+        # Add database stats if available
+        if self.db:
+            db_stats = self.db.get_stats()
+            stats["db_total"] = db_stats.get("total_applications", 0)
+            stats["db_today"] = db_stats.get("today_applications", 0)
+            stats["db_week"] = db_stats.get("week_applications", 0)
+
+        return stats

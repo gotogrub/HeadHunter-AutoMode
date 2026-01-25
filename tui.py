@@ -75,8 +75,10 @@ class TUI:
             table.add_row("2", "Mass apply to vacancies (default search)")
             table.add_row("3", "Mass apply with custom search")
             table.add_row("4", "Show statistics")
-            table.add_row("5", "Check login status")
-            table.add_row("6", "Clear session (logout)")
+            table.add_row("5", "Manage filters (blacklist/whitelist)")
+            table.add_row("6", "Export data to CSV")
+            table.add_row("7", "Check login status")
+            table.add_row("8", "Clear session (logout)")
             table.add_row("0", "Exit")
 
             self.console.print(table)
@@ -86,8 +88,10 @@ class TUI:
             print("[2] Mass apply to vacancies")
             print("[3] Mass apply with custom search")
             print("[4] Show statistics")
-            print("[5] Check login status")
-            print("[6] Clear session")
+            print("[5] Manage filters (blacklist/whitelist)")
+            print("[6] Export data to CSV")
+            print("[7] Check login status")
+            print("[8] Clear session")
             print("[0] Exit")
             return input("Select option: ")
 
@@ -287,3 +291,111 @@ class TUI:
             self.console.clear()
         else:
             print("\033[2J\033[H", end="")
+
+    def manage_filters_menu(self, filters) -> bool:
+        """
+        Display filter management menu.
+        Returns True to continue, False to go back.
+        """
+        if self.console:
+            self.console.print("\n[bold cyan]Filter Management[/]")
+            table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+            table.add_column("Option", style="bold cyan", width=4)
+            table.add_column("Description", style="white")
+
+            table.add_row("1", "Add company to blacklist")
+            table.add_row("2", "Add company to whitelist")
+            table.add_row("3", "Add word to blacklist")
+            table.add_row("4", "Show current filters")
+            table.add_row("5", "Set salary filter")
+            table.add_row("0", "Back to main menu")
+
+            self.console.print(table)
+            choice = self.console.input("[bold cyan]Select:[/] ")
+        else:
+            print("\n=== Filter Management ===")
+            print("[1] Add company to blacklist")
+            print("[2] Add company to whitelist")
+            print("[3] Add word to blacklist")
+            print("[4] Show current filters")
+            print("[5] Set salary filter")
+            print("[0] Back to main menu")
+            choice = input("Select: ")
+
+        if choice == "1":
+            company = input("  Company name to blacklist: ").strip()
+            if company:
+                filters.add_blacklist_company(company)
+                self.status(f"Added '{company}' to blacklist", "success")
+            return True
+
+        elif choice == "2":
+            company = input("  Company name to whitelist (priority): ").strip()
+            if company:
+                filters.add_whitelist_company(company)
+                self.status(f"Added '{company}' to whitelist", "success")
+            return True
+
+        elif choice == "3":
+            word = input("  Word to blacklist: ").strip()
+            if word:
+                filters.add_blacklist_word(word)
+                self.status(f"Added '{word}' to word blacklist", "success")
+            return True
+
+        elif choice == "4":
+            self.show_filter_stats(filters)
+            return True
+
+        elif choice == "5":
+            min_sal = input("  Minimum salary (empty=any): ").strip()
+            max_sal = input("  Maximum salary (empty=any): ").strip()
+            require = input("  Require salary in vacancy? (y/n) [n]: ").strip().lower() == 'y'
+
+            filters.set_salary_filter(
+                min_salary=int(min_sal) if min_sal.isdigit() else None,
+                max_salary=int(max_sal) if max_sal.isdigit() else None,
+                require=require
+            )
+            self.status("Salary filter updated", "success")
+            return True
+
+        elif choice == "0":
+            return False
+
+        return True
+
+    def show_filter_stats(self, filters):
+        """Display current filter statistics."""
+        filter_stats = filters.get_filter_stats()
+
+        if self.console:
+            table = Table(title="Current Filters", box=box.ROUNDED)
+            table.add_column("Filter Type", style="cyan")
+            table.add_column("Values", style="white")
+
+            blacklist_companies = ', '.join(filter_stats['blacklist_companies']) or 'none'
+            whitelist_companies = ', '.join(filter_stats['whitelist_companies']) or 'none'
+            blacklist_words = ', '.join(filter_stats['blacklist_words']) or 'none'
+
+            table.add_row("Blacklisted Companies", blacklist_companies[:60])
+            table.add_row("Whitelisted Companies", whitelist_companies[:60])
+            table.add_row("Blacklisted Words", blacklist_words[:60])
+
+            if filter_stats['min_salary']:
+                table.add_row("Min Salary", f"{filter_stats['min_salary']:,}₽")
+            if filter_stats['max_salary']:
+                table.add_row("Max Salary", f"{filter_stats['max_salary']:,}₽")
+            if filter_stats['require_salary']:
+                table.add_row("Require Salary", "Yes")
+
+            self.console.print(table)
+        else:
+            print("\n=== Current Filters ===")
+            print(f"  Blacklisted companies: {', '.join(filter_stats['blacklist_companies']) or 'none'}")
+            print(f"  Whitelisted companies: {', '.join(filter_stats['whitelist_companies']) or 'none'}")
+            print(f"  Blacklisted words: {', '.join(filter_stats['blacklist_words']) or 'none'}")
+            if filter_stats['min_salary']:
+                print(f"  Min salary: {filter_stats['min_salary']:,}₽")
+            if filter_stats['max_salary']:
+                print(f"  Max salary: {filter_stats['max_salary']:,}₽")
