@@ -1,12 +1,27 @@
 """
 HeadHunter Destroyer - Browser Management
+Cross-platform support: Windows & Linux
 """
 
 import os
+import sys
 import json
 import shutil
+import platform
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
-from config import BROWSER_TYPE, HEADLESS, SLOW_MO, USER_DATA_DIR, TIMEOUTS
+from config import HEADLESS, SLOW_MO, USER_DATA_DIR, TIMEOUTS
+
+
+def get_platform():
+    """Detect current platform."""
+    system = platform.system().lower()
+    if system == "windows":
+        return "windows"
+    elif system == "linux":
+        return "linux"
+    elif system == "darwin":
+        return "macos"
+    return "unknown"
 
 
 class BrowserManager:
@@ -17,6 +32,7 @@ class BrowserManager:
         self.browser: Browser = None
         self.context: BrowserContext = None
         self.page: Page = None
+        self.platform = get_platform()
         self.cookies_file = os.path.join(USER_DATA_DIR, "hh_cookies.json")
 
     def start(self, use_existing_session: bool = True) -> Page:
@@ -31,40 +47,41 @@ class BrowserManager:
         # Ensure user data directory exists
         os.makedirs(USER_DATA_DIR, exist_ok=True)
 
-        # Always use separate profile directory to avoid conflicts with open Edge
+        # Use separate profile directory
         profile_dir = os.path.join(USER_DATA_DIR, "hh_profile")
 
-        try:
-            self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=profile_dir,
-                channel="msedge",
-                headless=HEADLESS,
-                slow_mo=SLOW_MO,
-                viewport={"width": 1366, "height": 768},
-                locale="ru-RU",
-                timezone_id="Europe/Moscow",
-                # Anti-detection settings
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-features=IsolateOrigins,site-per-process",
-                ],
-                ignore_default_args=["--enable-automation"],
-            )
-        except Exception as e:
-            print(f"[!] Failed to start Edge, trying Chromium: {e}")
-            # Fallback to Chromium if Edge fails
-            self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=profile_dir,
-                headless=HEADLESS,
-                slow_mo=SLOW_MO,
-                viewport={"width": 1366, "height": 768},
-                locale="ru-RU",
-                timezone_id="Europe/Moscow",
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                ],
-                ignore_default_args=["--enable-automation"],
-            )
+        # Common browser args for anti-detection
+        browser_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ]
+
+        # Linux-specific args (for headless environments like Kali)
+        if self.platform == "linux":
+            browser_args.extend([
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+            ])
+
+        context_options = {
+            "user_data_dir": profile_dir,
+            "headless": HEADLESS,
+            "slow_mo": SLOW_MO,
+            "viewport": {"width": 1366, "height": 768},
+            "locale": "ru-RU",
+            "timezone_id": "Europe/Moscow",
+            "args": browser_args,
+            "ignore_default_args": ["--enable-automation"],
+        }
+
+        # Try to start browser based on platform
+        if self.platform == "windows":
+            self.context = self._start_windows_browser(context_options)
+        else:
+            self.context = self._start_linux_browser(context_options)
 
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
@@ -76,6 +93,33 @@ class BrowserManager:
             self._load_cookies()
 
         return self.page
+
+    def _start_windows_browser(self, options: dict) -> BrowserContext:
+        """Start browser on Windows (prefer Edge, fallback to Chromium)."""
+        try:
+            print("[*] Starting Microsoft Edge...")
+            return self.playwright.chromium.launch_persistent_context(
+                channel="msedge",
+                **options
+            )
+        except Exception as e:
+            print(f"[!] Edge failed: {e}")
+            print("[*] Falling back to Chromium...")
+            return self.playwright.chromium.launch_persistent_context(**options)
+
+    def _start_linux_browser(self, options: dict) -> BrowserContext:
+        """Start browser on Linux (Chromium)."""
+        try:
+            # Try Chrome first (if installed)
+            print("[*] Starting Chromium...")
+            return self.playwright.chromium.launch_persistent_context(**options)
+        except Exception as e:
+            print(f"[!] Chromium failed: {e}")
+            # Try Firefox as fallback
+            print("[*] Trying Firefox...")
+            options.pop("args", None)
+            options.pop("ignore_default_args", None)
+            return self.playwright.firefox.launch_persistent_context(**options)
 
     def _load_cookies(self):
         """Load cookies from file if exists."""
@@ -136,7 +180,6 @@ class BrowserManager:
 
             # Alternative check - resume page content
             if "/applicant/resumes" in current_url:
-                # Check if there's resume content or login redirect
                 content = self.page.content()
                 return "resume" in content.lower() and "войти" not in content.lower()
 
