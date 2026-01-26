@@ -18,6 +18,7 @@ from filters import VacancyFilter, setup_default_filters
 from cover_letters import CoverLetterManager
 from ai_assistant import get_ai_assistant
 from logger import setup_logger, get_logger
+from response_tracker import ResponseTracker
 
 # Telegram bot (опционально)
 try:
@@ -96,7 +97,8 @@ def print_menu():
 {Fore.GREEN}[6]{Style.RESET_ALL} 💾 Экспорт данных
 {Fore.GREEN}[7]{Style.RESET_ALL} 🔑 Проверить авторизацию
 {Fore.GREEN}[8]{Style.RESET_ALL} 📝 Шаблоны писем
-{Fore.GREEN}[9]{Style.RESET_ALL} 🗑️  Очистить сессию
+{Fore.GREEN}[9]{Style.RESET_ALL} 📬 Проверить отклики (статусы)
+{Fore.GREEN}[10]{Style.RESET_ALL} 🗑️  Очистить сессию
 {Fore.GREEN}[0]{Style.RESET_ALL} 🚪 Выход
 """)
     return input(f"{Fore.GREEN}➤ Ваш выбор: {Style.RESET_ALL}").strip()
@@ -384,6 +386,27 @@ def show_stats(applier, db):
     print(f"  Сегодня: {db_stats.get('today_applications', 0)}")
     print(f"  За неделю: {db_stats.get('week_applications', 0)}")
 
+    # Статусы откликов
+    by_status = db_stats.get('by_status', {})
+    if by_status:
+        print(f"\n{Fore.CYAN}По статусам:{Style.RESET_ALL}")
+        print(f"  📤 Отправлено:    {by_status.get('applied', 0)}")
+        print(f"  📖 Просмотрено:   {by_status.get('viewed', 0)}")
+        print(f"  ✉️  Приглашений:   {by_status.get('invited', 0)}")
+        print(f"  ❌ Отказов:       {by_status.get('rejected', 0)}")
+
+        # Конверсия
+        total = db_stats.get('total_applications', 0)
+        if total > 0:
+            viewed_rate = round(by_status.get('viewed', 0) / total * 100, 1)
+            invited_rate = round(by_status.get('invited', 0) / total * 100, 1)
+            rejected_rate = round(by_status.get('rejected', 0) / total * 100, 1)
+
+            print(f"\n{Fore.CYAN}Конверсия:{Style.RESET_ALL}")
+            print(f"  Просмотрено:  {Fore.BLUE}{viewed_rate}%{Style.RESET_ALL}")
+            print(f"  Приглашений:  {Fore.GREEN}{invited_rate}%{Style.RESET_ALL}")
+            print(f"  Отказов:      {Fore.RED}{rejected_rate}%{Style.RESET_ALL}")
+
     # Фильтры
     if applier.filters:
         filter_stats = applier.filters.get_filter_stats()
@@ -594,6 +617,67 @@ def manage_cover_letters(cover_letters):
             break
 
 
+def check_responses(tracker):
+    """Проверка статусов откликов."""
+    clear_screen()
+    print_banner()
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ ПРОВЕРКА ОТКЛИКОВ ═══{Style.RESET_ALL}\n")
+
+    log_and_print("Начинаю проверку статусов откликов на HH.ru...")
+    log_and_print("Это может занять несколько минут...\n", "warning")
+
+    stats = tracker.check_all_responses()
+
+    # Результаты
+    print(f"\n{Fore.GREEN}╔═══════════════════════════════════════════════════════╗")
+    print(f"║              РЕЗУЛЬТАТЫ ПРОВЕРКИ                      ║")
+    print(f"╚═══════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+
+    print(f"Всего откликов проверено: {Fore.CYAN}{stats['total']}{Style.RESET_ALL}")
+    print(f"Обновлено статусов:       {Fore.GREEN}{stats['updated']}{Style.RESET_ALL}\n")
+
+    print(f"Из них:")
+    print(f"  {Fore.BLUE}📖 Просмотрено:{Style.RESET_ALL}      {stats['viewed']}")
+    print(f"  {Fore.GREEN}✉️  Приглашений:{Style.RESET_ALL}     {stats['invited']}")
+    print(f"  {Fore.RED}❌ Отказов:{Style.RESET_ALL}          {stats['rejected']}")
+
+    if stats['errors'] > 0:
+        print(f"\n{Fore.YELLOW}⚠️  Ошибок: {stats['errors']}{Style.RESET_ALL}")
+
+    # Показать conversion stats
+    print(f"\n{Fore.CYAN}Конверсия откликов:{Style.RESET_ALL}")
+    conversion = tracker.get_conversion_stats()
+    if conversion:
+        print(f"  Просмотрено:  {Fore.BLUE}{conversion['viewed_rate']}%{Style.RESET_ALL} ({conversion['viewed']}/{conversion['total']})")
+        print(f"  Приглашений:  {Fore.GREEN}{conversion['invited_rate']}%{Style.RESET_ALL} ({conversion['invited']}/{conversion['total']})")
+        print(f"  Отказов:      {Fore.RED}{conversion['rejected_rate']}%{Style.RESET_ALL} ({conversion['rejected']}/{conversion['total']})")
+
+    # Показать последние обновления
+    recent = tracker.get_recent_updates(days=7)
+    if recent:
+        print(f"\n{Fore.CYAN}Последние обновления (за 7 дней):{Style.RESET_ALL}\n")
+        for i, resp in enumerate(recent[:5], 1):
+            status_icon = {
+                'viewed': '📖',
+                'invited': '✉️',
+                'rejected': '❌',
+                'applied': '📤'
+            }.get(resp['status'], '•')
+
+            status_color = {
+                'viewed': Fore.BLUE,
+                'invited': Fore.GREEN,
+                'rejected': Fore.RED,
+                'applied': Fore.YELLOW
+            }.get(resp['status'], Fore.WHITE)
+
+            print(f"  {i}. {status_icon} {status_color}{resp['status'].upper()}{Style.RESET_ALL} - {resp['title'][:50]}")
+            print(f"     {Fore.DIM}{resp['employer']}{Style.RESET_ALL}")
+
+    log_and_print("\nПроверка завершена!", "success")
+    input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+
 def select_browser():
     """Выбор браузера."""
     print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ ВЫБОР БРАУЗЕРА ═══{Style.RESET_ALL}\n")
@@ -739,6 +823,7 @@ def main():
         ai_assistant=ai_assistant,
         logger=logger
     )
+    tracker = ResponseTracker(page, db=db, logger=logger)
 
     # CLI режимы
     if args.boost:
@@ -836,6 +921,8 @@ def main():
             elif choice == "8":
                 manage_cover_letters(cover_letters)
             elif choice == "9":
+                check_responses(tracker)
+            elif choice == "10":
                 confirm = input(f"\n{Fore.YELLOW}Очистить сессию? Потребуется повторный вход. (y/n): {Style.RESET_ALL}").strip().lower()
                 if confirm == 'y':
                     browser_manager.clear_session()
