@@ -23,9 +23,12 @@ from response_tracker import ResponseTracker
 # Telegram bot (опционально)
 try:
     from telegram_bot import run_standalone_bot
+    from telegram_ai_assistant import TelegramAIAssistant, run_ai_bot
     TELEGRAM_AVAILABLE = True
+    TELEGRAM_AI_AVAILABLE = True
 except ImportError:
     TELEGRAM_AVAILABLE = False
+    TELEGRAM_AI_AVAILABLE = False
 
 # Colorama
 try:
@@ -712,7 +715,9 @@ def parse_args():
     parser.add_argument("--daemon", action="store_true",
                         help="Daemon режим (бесконечный цикл)")
     parser.add_argument("--telegram", action="store_true",
-                        help="Запустить Telegram бота")
+                        help="Запустить Telegram бота (базовый)")
+    parser.add_argument("--telegram-ai", action="store_true",
+                        help="Запустить AI Telegram помощника")
     parser.add_argument("--profile", type=str,
                         help="Имя профиля для мультиаккаунта (default, work, etc.)")
     parser.add_argument("--check-responses", action="store_true",
@@ -757,7 +762,7 @@ def main():
         os.environ["HH_PROFILE"] = profile_name
         print(f"{Fore.CYAN}Использование профиля: {profile_name}{Style.RESET_ALL}")
 
-    # Telegram бот (не требует браузера)
+    # Telegram бот (базовый - не требует браузера)
     if args.telegram:
         if not TELEGRAM_AVAILABLE:
             print(f"{Fore.RED}Ошибка: Telegram bot не доступен. Установите: pip install python-telegram-bot{Style.RESET_ALL}")
@@ -914,6 +919,39 @@ def main():
 
         except KeyboardInterrupt:
             log_and_print("\nDaemon режим остановлен", "warning")
+        finally:
+            safe_cleanup()
+        return
+
+    # AI Telegram бот (требует браузер и все модули)
+    if args.telegram_ai:
+        if not TELEGRAM_AI_AVAILABLE:
+            print(f"{Fore.RED}Ошибка: Telegram AI bot не доступен. Установите: pip install python-telegram-bot{Style.RESET_ALL}")
+            safe_cleanup()
+            sys.exit(1)
+
+        log_and_print("Запуск AI Telegram помощника...", "info")
+        log_and_print("Все компоненты активны: браузер, AI, отслеживание откликов", "success")
+
+        try:
+            bot = TelegramAIAssistant(
+                browser_manager=browser_manager,
+                booster=booster,
+                applier=applier,
+                tracker=tracker,
+                db=db,
+                filters_manager=filters
+            )
+
+            log_and_print(f"✓ AI помощник запущен для владельца ID: {bot.owner_id}", "success")
+            log_and_print("Бот работает в фоновом режиме. Браузер остается открытым.", "info")
+            log_and_print("Нажмите Ctrl+C для остановки", "warning")
+
+            # Run bot (blocking)
+            bot.run()
+
+        except KeyboardInterrupt:
+            log_and_print("\nAI бот остановлен", "warning")
         finally:
             safe_cleanup()
         return
