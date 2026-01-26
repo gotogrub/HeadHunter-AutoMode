@@ -387,6 +387,206 @@ def show_stats(applier, db):
     input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
 
 
+def manage_filters(filters):
+    """Управление фильтрами."""
+    while True:
+        clear_screen()
+        print_banner()
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ УПРАВЛЕНИЕ ФИЛЬТРАМИ ═══{Style.RESET_ALL}\n")
+
+        filter_stats = filters.get_filter_stats()
+
+        print(f"{Fore.CYAN}Текущие фильтры:{Style.RESET_ALL}")
+        print(f"  Черный список компаний: {len(filter_stats['blacklist_companies'])}")
+        if filter_stats['blacklist_companies']:
+            for company in list(filter_stats['blacklist_companies'])[:5]:
+                print(f"    • {company}")
+            if len(filter_stats['blacklist_companies']) > 5:
+                print(f"    ... и еще {len(filter_stats['blacklist_companies']) - 5}")
+
+        print(f"\n  Белый список компаний: {len(filter_stats['whitelist_companies'])}")
+        if filter_stats['whitelist_companies']:
+            for company in list(filter_stats['whitelist_companies'])[:5]:
+                print(f"    • {company}")
+
+        print(f"\n  Черный список слов: {len(filter_stats['blacklist_words'])}")
+        if filter_stats['blacklist_words']:
+            words = ', '.join(list(filter_stats['blacklist_words'])[:10])
+            print(f"    {words}")
+
+        if filter_stats['min_salary']:
+            print(f"\n  Мин. зарплата: {filter_stats['min_salary']:,}₽".replace(',', ' '))
+        if filter_stats['max_salary']:
+            print(f"  Макс. зарплата: {filter_stats['max_salary']:,}₽".replace(',', ' '))
+
+        print(f"\n{Fore.GREEN}╔═══════════════════════════════════════╗")
+        print(f"║              ДЕЙСТВИЯ                 ║")
+        print(f"╚═══════════════════════════════════════╝{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}[1]{Style.RESET_ALL} Добавить компанию в черный список")
+        print(f"{Fore.GREEN}[2]{Style.RESET_ALL} Добавить компанию в белый список")
+        print(f"{Fore.GREEN}[3]{Style.RESET_ALL} Добавить слово в черный список")
+        print(f"{Fore.GREEN}[4]{Style.RESET_ALL} Настроить фильтр зарплаты")
+        print(f"{Fore.GREEN}[5]{Style.RESET_ALL} Очистить черный список компаний")
+        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Назад")
+
+        choice = input(f"\n{Fore.GREEN}➤ Ваш выбор: {Style.RESET_ALL}").strip()
+
+        if choice == "1":
+            company = input(f"  Название компании: ").strip()
+            if company:
+                filters.add_blacklist_company(company)
+                log_and_print(f"Компания '{company}' добавлена в черный список", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "2":
+            company = input(f"  Название компании: ").strip()
+            if company:
+                filters.add_whitelist_company(company)
+                log_and_print(f"Компания '{company}' добавлена в белый список", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "3":
+            word = input(f"  Слово для черного списка: ").strip()
+            if word:
+                filters.add_blacklist_word(word)
+                log_and_print(f"Слово '{word}' добавлено в черный список", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "4":
+            print(f"\n{Fore.CYAN}Настройка фильтра зарплаты:{Style.RESET_ALL}")
+            min_sal = input(f"  Минимальная зарплата [пусто=любая]: ").strip()
+            max_sal = input(f"  Максимальная зарплата [пусто=любая]: ").strip()
+            require = input(f"  Требовать указание зарплаты? (y/n) [n]: ").strip().lower() == 'y'
+
+            filters.set_salary_filter(
+                min_salary=int(min_sal) if min_sal.isdigit() else None,
+                max_salary=int(max_sal) if max_sal.isdigit() else None,
+                require=require
+            )
+            log_and_print("Фильтр зарплаты обновлен", "success")
+            input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "5":
+            confirm = input(f"  Очистить черный список компаний? (y/n): ").strip().lower()
+            if confirm == 'y':
+                # TODO: добавить метод clear в filters
+                log_and_print("Черный список очищен", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "0":
+            break
+
+
+def export_data(db):
+    """Экспорт данных в CSV."""
+    clear_screen()
+    print_banner()
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ ЭКСПОРТ ДАННЫХ ═══{Style.RESET_ALL}\n")
+
+    filepath = input(f"  Путь для экспорта [applications.csv]: ").strip() or "applications.csv"
+
+    log_and_print(f"Экспорт данных в {filepath}...", "info")
+
+    try:
+        db.export_to_csv(filepath)
+        log_and_print(f"✓ Данные экспортированы в {filepath}", "success")
+
+        # Показать что экспортировано
+        db_stats = db.get_stats()
+        print(f"\n{Fore.CYAN}Экспортировано:{Style.RESET_ALL}")
+        print(f"  Откликов: {db_stats.get('total_applications', 0)}")
+
+    except Exception as e:
+        log_and_print(f"Ошибка экспорта: {e}", "error")
+
+    input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+
+def manage_cover_letters(cover_letters):
+    """Управление шаблонами сопроводительных писем."""
+    while True:
+        clear_screen()
+        print_banner()
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ ШАБЛОНЫ СОПРОВОДИТЕЛЬНЫХ ПИСЕМ ═══{Style.RESET_ALL}\n")
+
+        templates = cover_letters.get_all_templates()
+
+        if not templates:
+            log_and_print("Нет доступных шаблонов", "warning")
+        else:
+            for i, t in enumerate(templates, 1):
+                default_mark = f" {Fore.GREEN}[ПО УМОЛЧАНИЮ]{Style.RESET_ALL}" if t["is_default"] else ""
+                print(f"{Fore.CYAN}[{i}]{Style.RESET_ALL} {t['name']}{default_mark} (использовано {t['use_count']}x)")
+
+        print(f"\n{Fore.GREEN}╔═══════════════════════════════════════╗")
+        print(f"║              ДЕЙСТВИЯ                 ║")
+        print(f"╚═══════════════════════════════════════╝{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}[a]{Style.RESET_ALL} Добавить новый шаблон")
+        print(f"{Fore.GREEN}[v]{Style.RESET_ALL} Просмотреть шаблон")
+        print(f"{Fore.GREEN}[d]{Style.RESET_ALL} Установить по умолчанию")
+        print(f"{Fore.GREEN}[p]{Style.RESET_ALL} Показать доступные плейсхолдеры")
+        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Назад")
+
+        choice = input(f"\n{Fore.GREEN}➤ Ваш выбор: {Style.RESET_ALL}").strip().lower()
+
+        if choice == "a":
+            print(f"\n{Fore.CYAN}Создание нового шаблона:{Style.RESET_ALL}")
+            name = input(f"  Название шаблона: ").strip()
+            if not name:
+                continue
+
+            print(f"\n  Введите текст шаблона (пустая строка = конец):")
+            print(f"  {Fore.YELLOW}Доступные плейсхолдеры: {{company}}, {{position}}, {{salary}}, {{name}}{Style.RESET_ALL}\n")
+
+            lines = []
+            while True:
+                line = input("  ")
+                if line == "":
+                    break
+                lines.append(line)
+
+            if lines:
+                content = "\n".join(lines)
+                cover_letters.add_template(name, content)
+                log_and_print(f"Шаблон '{name}' добавлен", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "v":
+            if not templates:
+                continue
+
+            num = input(f"  Номер шаблона для просмотра: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                t = templates[int(num) - 1]
+                print(f"\n{Fore.CYAN}╔═══ {t['name']} ═══╗{Style.RESET_ALL}")
+                print(t["content"])
+                print(f"{Fore.CYAN}╚{'═' * (len(t['name']) + 8)}╝{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "d":
+            if not templates:
+                continue
+
+            num = input(f"  Номер шаблона для установки по умолчанию: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                template_name = templates[int(num) - 1]["name"]
+                cover_letters.set_default(template_name)
+                log_and_print(f"Шаблон '{template_name}' установлен по умолчанию", "success")
+                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "p":
+            print(f"\n{Fore.CYAN}Доступные плейсхолдеры:{Style.RESET_ALL}")
+            print(f"  {{company}}   - Название компании")
+            print(f"  {{position}}  - Название вакансии")
+            print(f"  {{salary}}    - Зарплата")
+            print(f"  {{name}}      - Ваше имя")
+            print(f"  {{date}}      - Текущая дата")
+            input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+
+        elif choice == "0":
+            break
+
+
 def select_browser():
     """Выбор браузера."""
     print(f"\n{Fore.CYAN}{Style.BRIGHT}═══ ВЫБОР БРАУЗЕРА ═══{Style.RESET_ALL}\n")
@@ -537,11 +737,9 @@ def main():
             elif choice == "4":
                 show_stats(applier, db)
             elif choice == "5":
-                log_and_print("Функция в разработке", "warning")
-                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+                manage_filters(filters)
             elif choice == "6":
-                log_and_print("Функция в разработке", "warning")
-                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+                export_data(db)
             elif choice == "7":
                 if browser_manager.is_logged_in():
                     log_and_print("✓ Авторизован на HH.ru", "success")
@@ -549,12 +747,13 @@ def main():
                     log_and_print("✗ Не авторизован", "error")
                 input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
             elif choice == "8":
-                log_and_print("Функция в разработке", "warning")
-                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+                manage_cover_letters(cover_letters)
             elif choice == "9":
-                browser_manager.clear_session()
-                log_and_print("Сессия очищена", "success")
-                input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
+                confirm = input(f"\n{Fore.YELLOW}Очистить сессию? Потребуется повторный вход. (y/n): {Style.RESET_ALL}").strip().lower()
+                if confirm == 'y':
+                    browser_manager.clear_session()
+                    log_and_print("Сессия очищена. Перезапустите программу.", "success")
+                    input(f"\n{Fore.YELLOW}Нажмите Enter...{Style.RESET_ALL}")
             elif choice == "0":
                 break
             else:
