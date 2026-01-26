@@ -12,7 +12,19 @@ __pycache__/
 *.so
 .Python
 venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Environment
 .env
+.env.local
+
+# Logs
+*.log
+logs/
 
 # IDE
 .idea/

@@ -1,0 +1,31 @@
+[Unit]
+Description=HeadHunter Destroyer - Automated Job Application Bot
+After=network.target
+
+[Service]
+Type=simple
+User=hh
+Group=hh
+WorkingDirectory=/opt/hh-destroyer
+ExecStart=/usr/bin/python3 main.py --daemon --browser auto
+Restart=always
+RestartSec=30
+
+# Переменные окружения
+Environment="HH_SERVER_MODE=true"
+Environment="HH_BROWSER=auto"
+# Environment="TELEGRAM_BOT_TOKEN=your_token_here"
+# Environment="TELEGRAM_OWNER_ID=your_id_here"
+# Environment="OLLAMA_HOST=http://localhost:11434"
+# Environment="OLLAMA_MODEL=llama2"
+
+# Логирование
+StandardOutput=append:/var/log/hh-destroyer/output.log
+StandardError=append:/var/log/hh-destroyer/error.log
+
+# Безопасность
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
