@@ -19,13 +19,17 @@ class ResumeBooster:
 
     def get_resumes(self) -> list:
         """Get list of user's resumes."""
+        print(f"[DEBUG] Переход на страницу резюме: {HH_RESUMES_URL}")
         self.page.goto(HH_RESUMES_URL, wait_until="domcontentloaded")
         time.sleep(random.uniform(1, 2))
 
+        print(f"[DEBUG] Текущий URL: {self.page.url}")
+
         resumes = []
         resume_cards = self.page.query_selector_all(SELECTORS["resume_card"])
+        print(f"[DEBUG] Найдено карточек резюме: {len(resume_cards)}")
 
-        for card in resume_cards:
+        for i, card in enumerate(resume_cards):
             try:
                 title_el = card.query_selector(SELECTORS["resume_title"])
                 title = title_el.inner_text() if title_el else "Unknown"
@@ -33,13 +37,19 @@ class ResumeBooster:
                 link_el = card.query_selector("a[href*='/resume/']")
                 link = link_el.get_attribute("href") if link_el else None
 
+                print(f"[DEBUG] Резюме {i+1}: {title}, link={link}")
+
+                # Убедиться что ссылка полная
+                if link and not link.startswith("http"):
+                    link = f"https://hh.ru{link}"
+
                 resumes.append({
                     "title": title,
                     "link": link,
                     "element": card
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[DEBUG] Ошибка парсинга карточки {i+1}: {e}")
 
         return resumes
 
@@ -49,12 +59,25 @@ class ResumeBooster:
         This triggers HH.ru to refresh the resume's timestamp.
         """
         try:
-            edit_url = resume_url.replace("/resume/", "/resume/edit/")
+            # Построить edit URL
+            if "/resume/edit/" in resume_url:
+                edit_url = resume_url
+            else:
+                edit_url = resume_url.replace("/resume/", "/resume/edit/")
+
+            # Убрать query параметры
             if "?" in edit_url:
                 edit_url = edit_url.split("?")[0]
 
+            # Убедиться что ссылка полная
+            if not edit_url.startswith("http"):
+                edit_url = f"https://hh.ru{edit_url}"
+
+            print(f"[DEBUG] Переход на edit URL: {edit_url}")
             self.page.goto(edit_url, wait_until="domcontentloaded")
             time.sleep(random.uniform(1, 2))
+
+            print(f"[DEBUG] Текущий URL после перехода: {self.page.url}")
 
             # Find "About" section edit button and click
             about_btn = self.page.query_selector(SELECTORS["resume_edit_about"])
