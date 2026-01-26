@@ -86,18 +86,22 @@ HH_SERVER_MODE=true ./start.sh
 
 ### Интерактивный режим
 
+При запуске будет предложен **выбор браузера** (Chrome/Edge/Firefox/Авто), затем появится меню:
+
 ```
-[1] Boost all resumes     — Обновить все резюме
-[2] Mass apply            — Откликнуться на вакансии (стандартный поиск)
-[3] Mass apply custom     — Откликнуться с настройкой фильтров
-[4] Show statistics       — Показать статистику сессии
-[5] Manage filters        — Управление фильтрами (blacklist/whitelist)
-[6] Export data           — Экспорт данных в CSV
-[7] Check login status    — Проверить авторизацию
-[8] Clear session         — Очистить сессию (выйти)
-[9] Cover letters         — Управление шаблонами писем
-[0] Exit                  — Выход
+[1] Обновить все резюме
+[2] Массовая рассылка откликов
+[3] Рассылка с настройкой поиска
+[4] Показать статистику
+[5] Управление фильтрами (черный/белый список)
+[6] Экспорт данных в CSV
+[7] Проверить авторизацию
+[8] Очистить сессию (выйти)
+[9] Шаблоны сопроводительных писем
+[0] Выход
 ```
+
+**Интерфейс полностью на русском языке!**
 
 ### CLI автоматизация
 
@@ -215,27 +219,68 @@ HH_BROWSER=firefox ./start.sh
 
 ### AI-генерация писем
 
-Для персонализированных писем можно использовать AI:
+Для персонализированных писем можно использовать AI: **OpenAI** (платный) или **Ollama** (локальный, бесплатный).
+
+#### OpenAI
 
 ```bash
-# OpenAI (требуется API ключ)
+# Установка
+pip install openai
+
+# Запуск
 export OPENAI_API_KEY=sk-...
 python main.py --apply --ai-letters
+```
 
-# Ollama (локальный LLM)
-# Запустите Ollama: ollama serve
+#### Ollama (Локальный LLM - РЕКОМЕНДУЕТСЯ)
+
+Ollama запускает LLM модели локально на вашем компьютере **бесплатно и без интернета**.
+
+**Установка Ollama:**
+
+```bash
+# Linux/macOS
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows - скачайте с https://ollama.com/download
+```
+
+**Скачать модель и запустить:**
+
+```bash
+# Скачать llama2 (самая популярная)
+ollama pull llama2
+
+# Запустить Ollama сервер (в отдельном терминале)
+ollama serve
+```
+
+**Использование с HeadHunter Destroyer:**
+
+```bash
+# Windows
+set OLLAMA_HOST=http://localhost:11434
+set OLLAMA_MODEL=llama2
+python main.py --apply --ai-letters
+
+# Linux
 export OLLAMA_HOST=http://localhost:11434
 export OLLAMA_MODEL=llama2
 python main.py --apply --ai-letters
 ```
 
-Переменные для AI:
+**Популярные модели Ollama:**
+- `llama2` - Универсальная модель, хорошо пишет по-русски
+- `mistral` - Быстрая и качественная
+- `gemma` - От Google, легковесная
+
+**Переменные для AI:**
 ```bash
 HH_AI_PROVIDER=auto      # auto, openai, ollama, disabled
-OPENAI_API_KEY=sk-...    # Ключ OpenAI
+OPENAI_API_KEY=sk-...    # Ключ OpenAI (если используете)
 OPENAI_MODEL=gpt-3.5-turbo
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=llama2
+OLLAMA_MODEL=llama2      # или mistral, gemma
 ```
 
 ## Логирование
