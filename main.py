@@ -715,6 +715,8 @@ def parse_args():
                         help="Запустить Telegram бота")
     parser.add_argument("--profile", type=str,
                         help="Имя профиля для мультиаккаунта (default, work, etc.)")
+    parser.add_argument("--check-responses", action="store_true",
+                        help="Проверить статусы откликов")
     return parser.parse_args()
 
 
@@ -862,6 +864,20 @@ def main():
                 applier.use_cover_letter = True
 
         run_mass_apply(applier, params)
+        safe_cleanup()
+        return
+
+    if args.check_responses:
+        log_and_print("Проверка статусов откликов...")
+        stats = tracker.check_all_responses()
+
+        log_and_print(f"\nРезультаты: проверено {stats['total']}, обновлено {stats['updated']}", "info")
+        log_and_print(f"Просмотрено: {stats['viewed']}, Приглашений: {stats['invited']}, Отказов: {stats['rejected']}", "info")
+
+        conversion = tracker.get_conversion_stats()
+        if conversion and conversion['total'] > 0:
+            log_and_print(f"\nКонверсия: просмотрено {conversion['viewed_rate']}%, приглашений {conversion['invited_rate']}%", "success")
+
         safe_cleanup()
         return
 

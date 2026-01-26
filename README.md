@@ -126,6 +126,9 @@ python main.py --apply --cover-letter
 # С AI-генерацией писем
 python main.py --apply --ai-letters
 
+# Проверить статусы откликов
+python main.py --check-responses
+
 # Daemon режим (бесконечный цикл: boost каждые 4ч + apply)
 python main.py --daemon
 ```
@@ -138,6 +141,9 @@ python main.py --daemon
 
 # Рассылка каждое утро в 9:00
 0 9 * * * cd /path/to/hh-destroyer && python main.py --apply --max-apply 50
+
+# Проверка откликов каждые 2 часа
+0 */2 * * * cd /path/to/hh-destroyer && python main.py --check-responses
 ```
 
 **Для серверного деплоя см. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md):**
