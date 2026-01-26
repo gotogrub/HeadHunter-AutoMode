@@ -1,21 +1,22 @@
 """
-HeadHunter Destroyer - Main Entry Point
-Automates resume boosting and vacancy applications on HH.ru
+HeadHunter Destroyer - Главный файл
+Автоматизация поиска работы на HH.ru
 
-Supports two modes:
-- Desktop Mode (Windows/Linux with GUI): Visual browser window
-- Server Mode (Linux headless): TUI interface, headless browser
+Режимы:
+- Desktop Mode (Windows/Linux с GUI): Видимый браузер
+- Server Mode (Linux headless): TUI интерфейс, headless браузер
 
-CLI flags for automation:
-  --daemon      Run in daemon mode (auto boost + apply loop)
-  --boost       One-time resume boost and exit
-  --apply       One-time mass apply and exit
-  --apply-query "text"  Apply with specific search query
+CLI флаги:
+  --daemon      Демон режим (авто boost + apply циклом)
+  --boost       Разовое обновление резюме
+  --apply       Разовая массовая рассылка
+  --telegram    Запуск с Telegram ботом
 """
 
 import sys
 import signal
 import argparse
+import os
 from datetime import datetime
 
 from config import SERVER_MODE, IS_WINDOWS
@@ -44,8 +45,13 @@ else:
     ui = None
 
 
+def clear_screen():
+    """Очистить экран консоли."""
+    os.system('cls' if IS_WINDOWS else 'clear')
+
+
 def print_banner():
-    """Print application banner."""
+    """Вывести баннер приложения."""
     if SERVER_MODE:
         ui.print_banner()
     else:
@@ -58,68 +64,78 @@ def print_banner():
  |_| |_|_| |_| |____/ \\___||___/\\__|_|  \\___/ \\__, |\\___|_|
                                               |___/
 {Style.RESET_ALL}
-{Fore.YELLOW}  HeadHunter Resume Booster & Vacancy Applier{Style.RESET_ALL}
-{Fore.WHITE}  ============================================={Style.RESET_ALL}
+{Fore.YELLOW}  Автоматизация поиска работы на HeadHunter{Style.RESET_ALL}
+{Fore.WHITE}  ==========================================={Style.RESET_ALL}
 """
         print(banner)
 
 
 def print_menu():
-    """Print main menu."""
+    """Вывести главное меню."""
     if SERVER_MODE:
         return ui.print_menu()
     else:
         print(f"""
-{Fore.GREEN}[1]{Style.RESET_ALL} Boost all resumes
-{Fore.GREEN}[2]{Style.RESET_ALL} Mass apply to vacancies
-{Fore.GREEN}[3]{Style.RESET_ALL} Mass apply with custom search
-{Fore.GREEN}[4]{Style.RESET_ALL} Show statistics
-{Fore.GREEN}[5]{Style.RESET_ALL} Manage filters (blacklist/whitelist)
-{Fore.GREEN}[6]{Style.RESET_ALL} Export data to CSV
-{Fore.GREEN}[7]{Style.RESET_ALL} Check login status
-{Fore.GREEN}[8]{Style.RESET_ALL} Clear session (logout)
-{Fore.GREEN}[9]{Style.RESET_ALL} Manage cover letter templates
-{Fore.GREEN}[0]{Style.RESET_ALL} Exit
+{Fore.GREEN}[1]{Style.RESET_ALL} Обновить все резюме
+{Fore.GREEN}[2]{Style.RESET_ALL} Массовая рассылка откликов
+{Fore.GREEN}[3]{Style.RESET_ALL} Рассылка с настройкой поиска
+{Fore.GREEN}[4]{Style.RESET_ALL} Показать статистику
+{Fore.GREEN}[5]{Style.RESET_ALL} Управление фильтрами (черный/белый список)
+{Fore.GREEN}[6]{Style.RESET_ALL} Экспорт данных в CSV
+{Fore.GREEN}[7]{Style.RESET_ALL} Проверить авторизацию
+{Fore.GREEN}[8]{Style.RESET_ALL} Очистить сессию (выйти)
+{Fore.GREEN}[9]{Style.RESET_ALL} Шаблоны сопроводительных писем
+{Fore.GREEN}[0]{Style.RESET_ALL} Выход
 """)
-        return input(f"{Fore.GREEN}Select option: {Style.RESET_ALL}").strip()
+        return input(f"{Fore.GREEN}Выберите опцию: {Style.RESET_ALL}").strip()
 
 
-def get_search_params() -> dict:
-    """Get custom search parameters from user."""
+def get_search_params():
+    """Получить параметры поиска от пользователя."""
     if SERVER_MODE:
         return ui.get_search_params()
-    else:
-        print(f"\n{Fore.CYAN}[*] Enter search parameters (press Enter for default):{Style.RESET_ALL}")
 
-        params = {}
+    params = {}
+    print(f"\n{Fore.CYAN}=== Параметры поиска ==={Style.RESET_ALL}")
 
-        query = input("  Search query [empty]: ").strip()
-        if query:
-            params["text"] = query
+    query = input("  Поисковый запрос [пусто]: ").strip()
+    if query:
+        params["text"] = query
 
-        print("  Regions: 1=Moscow, 2=St.Petersburg, 113=Russia")
-        area = input("  Region ID [1]: ").strip()
-        params["area"] = area if area else "1"
+    print("  Регион: 1=Москва, 2=СПб, 113=Россия")
+    area = input("  ID региона [1]: ").strip()
+    params["area"] = area if area else "1"
 
-        print("  Experience: noExperience, between1And3, between3And6, moreThan6")
-        exp = input("  Experience [any]: ").strip()
-        if exp:
-            params["experience"] = exp
+    print("  Опыт: noExperience, between1And3, between3And6, moreThan6")
+    exp = input("  Опыт [любой]: ").strip()
+    if exp:
+        params["experience"] = exp
 
-        print("  Schedule: fullDay, shift, flexible, remote, flyInFlyOut")
-        schedule = input("  Schedule [any]: ").strip()
-        if schedule:
-            params["schedule"] = schedule
+    print("  График: fullDay, shift, flexible, remote, flyInFlyOut")
+    schedule = input("  График [любой]: ").strip()
+    if schedule:
+        params["schedule"] = schedule
 
-        max_apps = input("  Max applications [200]: ").strip()
-        if max_apps and max_apps.isdigit():
-            params["_max_applications"] = int(max_apps)
+    max_apps = input("  Макс. откликов [200]: ").strip()
+    if max_apps and max_apps.isdigit():
+        params["_max_applications"] = int(max_apps)
 
-        return params
+    return params
 
 
 def status(message: str, status_type: str = "info"):
-    """Print status message."""
+    """Вывести статусное сообщение."""
+    logger = get_logger()
+
+    # Логируем
+    if status_type == "error":
+        logger.error(message)
+    elif status_type == "warning":
+        logger.warning(message)
+    else:
+        logger.info(message)
+
+    # Выводим в консоль
     if SERVER_MODE:
         ui.status(message, status_type)
     else:
@@ -134,22 +150,34 @@ def status(message: str, status_type: str = "info"):
 
 
 def run_resume_boost(booster: ResumeBooster):
-    """Run resume boost routine."""
-    status("Starting resume boost...", "info")
+    """Запустить обновление резюме."""
+    logger = get_logger()
+    status("Запуск обновления резюме...", "info")
 
     if not booster.can_update():
         mins = booster.minutes_until_next_update()
-        status(f"HH.ru limits updates to every 4 hours. Next update in {mins} minutes.", "warning")
+        status(f"HH.ru ограничивает обновления до 1 раза в 4 часа. Следующее обновление через {mins} мин.", "warning")
         return
 
-    results = booster.boost_all_resumes(callback=ui.log_resume if SERVER_MODE else None)
+    try:
+        results = booster.boost_all_resumes(callback=ui.log_resume if SERVER_MODE else None)
 
-    status(f"Resume boost complete! Success: {len(results['success'])}, Failed: {len(results['failed'])}", "success")
+        success_count = len(results['success'])
+        failed_count = len(results['failed'])
+
+        for resume_title in results['success']:
+            logger.log_resume_update("", resume_title, "success")
+
+        status(f"Обновление завершено! Успешно: {success_count}, Ошибок: {failed_count}", "success")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении резюме: {e}")
+        status(f"Ошибка: {e}", "error")
 
 
 def run_mass_apply(applier: VacancyApplier, params: dict = None):
-    """Run mass apply routine."""
-    status("Starting mass apply...", "info")
+    """Запустить массовую рассылку откликов."""
+    logger = get_logger()
+    status("Запуск массовой рассылки...", "info")
 
     max_apps = params.pop("_max_applications", None) if params else None
 
@@ -160,271 +188,362 @@ def run_mass_apply(applier: VacancyApplier, params: dict = None):
             "on_page": ui.log_page,
         }
 
-    results = applier.mass_apply(search_params=params, max_applications=max_apps, callbacks=callbacks)
+    try:
+        results = applier.mass_apply(search_params=params, max_applications=max_apps, callbacks=callbacks)
 
-    # Summary
-    filtered_count = len(results.get('filtered', []))
-    msg = f"Applied: {len(results['applied'])}, Skipped: {len(results['skipped'])}"
-    if filtered_count > 0:
-        msg += f", Filtered: {filtered_count}"
-    status(f"Mass apply complete! {msg}", "success")
+        # Summary
+        applied_count = len(results['applied'])
+        skipped_count = len(results['skipped'])
+        filtered_count = len(results.get('filtered', []))
 
-    if SERVER_MODE:
-        ui.show_vacancies_table(results['applied'])
-    elif results['applied']:
-        print(f"\n{Fore.CYAN}[*] Applied to:{Style.RESET_ALL}")
-        for v in results['applied'][:10]:
-            salary_info = ""
-            if v.get('salary_from'):
-                salary_info = f" ({v['salary_from']:,}₽)"
-            print(f"  - {v['title']}{salary_info} @ {v['employer']}")
-        if len(results['applied']) > 10:
-            print(f"  ... and {len(results['applied']) - 10} more")
+        msg = f"Откликов: {applied_count}, Пропущено: {skipped_count}"
+        if filtered_count > 0:
+            msg += f", Отфильтровано: {filtered_count}"
+
+        status(msg, "success")
+
+    except Exception as e:
+        logger.error(f"Ошибка при массовой рассылке: {e}")
+        status(f"Ошибка: {e}", "error")
 
 
 def show_stats(applier: VacancyApplier, booster: ResumeBooster, db: Database):
-    """Show session and database statistics."""
-    stats = applier.get_stats()
+    """Показать статистику."""
+    print(f"\n{Fore.CYAN}=== Статистика сессии ==={Style.RESET_ALL}")
+    print(f"  Откликов за сессию: {applier.applied_count}")
+    print(f"  Пропущено: {applier.skipped_count}")
+    print(f"  Отфильтровано: {applier.filtered_count}")
+
+    print(f"\n{Fore.CYAN}=== Статистика из БД ==={Style.RESET_ALL}")
     db_stats = db.get_stats()
+    print(f"  Всего откликов: {db_stats.get('total_applications', 0)}")
+    print(f"  Сегодня: {db_stats.get('today_applications', 0)}")
+    print(f"  За неделю: {db_stats.get('week_applications', 0)}")
 
-    if SERVER_MODE:
-        ui.show_stats()
-    else:
-        print(f"\n{Fore.CYAN}[*] Session Statistics:{Style.RESET_ALL}")
-        print(f"  Applied this session: {stats['applied']}")
-        print(f"  Skipped: {stats['skipped']}")
-        print(f"  Filtered: {stats['filtered']}")
+    print(f"\n{Fore.CYAN}=== Фильтры ==={Style.RESET_ALL}")
+    filter_stats = applier.filters.get_filter_stats() if applier.filters else {}
+    print(f"  Компаний в черном списке: {len(filter_stats.get('blacklist_companies', []))}")
+    print(f"  Компаний в белом списке: {len(filter_stats.get('whitelist_companies', []))}")
 
-        print(f"\n{Fore.CYAN}[*] Database Statistics:{Style.RESET_ALL}")
-        print(f"  Total applications: {db_stats['total_applications']}")
-        print(f"  Today: {db_stats['today_applications']}")
-        print(f"  This week: {db_stats['week_applications']}")
-
-        if db_stats.get('top_employers'):
-            print(f"\n{Fore.CYAN}[*] Top Employers:{Style.RESET_ALL}")
-            for employer, count in db_stats['top_employers'][:5]:
-                print(f"  {employer}: {count}")
-
-        print(f"\n{Fore.CYAN}[*] Filters:{Style.RESET_ALL}")
-        print(f"  Blacklisted companies: {db_stats['blacklisted_companies']}")
-        print(f"  Whitelisted companies: {db_stats['whitelisted_companies']}")
-
-        if booster.last_update_time:
-            print(f"\n  Last resume update: {booster.last_update_time.strftime('%H:%M:%S')}")
-            print(f"  Next update in: {booster.minutes_until_next_update()} minutes")
+    if booster.last_update_time:
+        print(f"\n{Fore.CYAN}=== Резюме ==={Style.RESET_ALL}")
+        print(f"  Последнее обновление: {booster.last_update_time.strftime('%H:%M:%S')}")
+        print(f"  Следующее обновление через: {booster.minutes_until_next_update()} мин")
 
 
 def manage_filters(filters: VacancyFilter):
-    """Manage blacklist/whitelist."""
+    """Управление фильтрами."""
     if SERVER_MODE:
-        # Use TUI version
         while ui.manage_filters_menu(filters):
             pass
         return
 
-    # Desktop version
     while True:
-        print(f"\n{Fore.CYAN}[*] Filter Management:{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}[1]{Style.RESET_ALL} Add company to blacklist")
-        print(f"{Fore.GREEN}[2]{Style.RESET_ALL} Add company to whitelist")
-        print(f"{Fore.GREEN}[3]{Style.RESET_ALL} Add word to blacklist")
-        print(f"{Fore.GREEN}[4]{Style.RESET_ALL} Show current filters")
-        print(f"{Fore.GREEN}[5]{Style.RESET_ALL} Set salary filter")
-        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Back to main menu")
+        clear_screen()
+        print_banner()
+        print(f"\n{Fore.CYAN}=== Управление фильтрами ==={Style.RESET_ALL}")
+        print(f"{Fore.GREEN}[1]{Style.RESET_ALL} Добавить компанию в черный список")
+        print(f"{Fore.GREEN}[2]{Style.RESET_ALL} Добавить компанию в белый список")
+        print(f"{Fore.GREEN}[3]{Style.RESET_ALL} Добавить слово в черный список")
+        print(f"{Fore.GREEN}[4]{Style.RESET_ALL} Показать текущие фильтры")
+        print(f"{Fore.GREEN}[5]{Style.RESET_ALL} Настроить фильтр зарплаты")
+        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Назад")
 
-        choice = input(f"{Fore.GREEN}Select: {Style.RESET_ALL}").strip()
+        choice = input(f"{Fore.GREEN}Выберите: {Style.RESET_ALL}").strip()
 
         if choice == "1":
-            company = input("  Company name to blacklist: ").strip()
+            company = input("  Название компании: ").strip()
             if company:
                 filters.add_blacklist_company(company)
-                status(f"Added '{company}' to blacklist", "success")
+                status(f"Добавлено в черный список: {company}", "success")
+                input("\nНажмите Enter...")
 
         elif choice == "2":
-            company = input("  Company name to whitelist (priority): ").strip()
+            company = input("  Название компании: ").strip()
             if company:
                 filters.add_whitelist_company(company)
-                status(f"Added '{company}' to whitelist", "success")
+                status(f"Добавлено в белый список: {company}", "success")
+                input("\nНажмите Enter...")
 
         elif choice == "3":
-            word = input("  Word to blacklist: ").strip()
+            word = input("  Слово для черного списка: ").strip()
             if word:
                 filters.add_blacklist_word(word)
-                status(f"Added '{word}' to word blacklist", "success")
+                status(f"Слово добавлено: {word}", "success")
+                input("\nНажмите Enter...")
 
         elif choice == "4":
             filter_stats = filters.get_filter_stats()
-            print(f"\n{Fore.CYAN}[*] Current Filters:{Style.RESET_ALL}")
-            print(f"  Blacklisted companies: {', '.join(filter_stats['blacklist_companies']) or 'none'}")
-            print(f"  Whitelisted companies: {', '.join(filter_stats['whitelist_companies']) or 'none'}")
-            print(f"  Blacklisted words: {', '.join(filter_stats['blacklist_words']) or 'none'}")
+            print(f"\n{Fore.CYAN}=== Текущие фильтры ==={Style.RESET_ALL}")
+            print(f"  Черный список компаний: {', '.join(filter_stats['blacklist_companies']) or 'нет'}")
+            print(f"  Белый список компаний: {', '.join(filter_stats['whitelist_companies']) or 'нет'}")
+            print(f"  Черный список слов: {', '.join(filter_stats['blacklist_words']) or 'нет'}")
             if filter_stats['min_salary']:
-                print(f"  Min salary: {filter_stats['min_salary']:,}₽")
+                print(f"  Мин. зарплата: {filter_stats['min_salary']:,}₽")
             if filter_stats['max_salary']:
-                print(f"  Max salary: {filter_stats['max_salary']:,}₽")
+                print(f"  Макс. зарплата: {filter_stats['max_salary']:,}₽")
+            input("\nНажмите Enter...")
 
         elif choice == "5":
-            min_sal = input("  Minimum salary (empty=any): ").strip()
-            max_sal = input("  Maximum salary (empty=any): ").strip()
-            require = input("  Require salary in vacancy? (y/n) [n]: ").strip().lower() == 'y'
+            min_sal = input("  Минимальная зарплата [пусто=любая]: ").strip()
+            max_sal = input("  Максимальная зарплата [пусто=любая]: ").strip()
+            require = input("  Требовать указание зарплаты? (y/n) [n]: ").strip().lower() == 'y'
 
             filters.set_salary_filter(
                 min_salary=int(min_sal) if min_sal.isdigit() else None,
                 max_salary=int(max_sal) if max_sal.isdigit() else None,
                 require=require
             )
-            status("Salary filter updated", "success")
+            status("Фильтр зарплаты обновлен", "success")
+            input("\nНажмите Enter...")
 
         elif choice == "0":
             break
 
 
 def export_data(db: Database):
-    """Export data to CSV."""
-    filepath = input("  Export path [applications.csv]: ").strip() or "applications.csv"
+    """Экспорт данных в CSV."""
+    filepath = input("  Путь для экспорта [applications.csv]: ").strip() or "applications.csv"
     try:
         db.export_to_csv(filepath)
-        status(f"Data exported to {filepath}", "success")
+        status(f"Данные экспортированы в {filepath}", "success")
     except Exception as e:
-        status(f"Export failed: {e}", "error")
+        status(f"Ошибка экспорта: {e}", "error")
+    input("\nНажмите Enter...")
+
+
+def manage_cover_letters(cover_letters: CoverLetterManager):
+    """Управление шаблонами писем."""
+    while True:
+        clear_screen()
+        print_banner()
+        print(f"\n{Fore.CYAN}=== Шаблоны сопроводительных писем ==={Style.RESET_ALL}")
+        templates = cover_letters.get_all_templates()
+
+        for i, t in enumerate(templates, 1):
+            default_mark = " [ПО УМОЛЧАНИЮ]" if t["is_default"] else ""
+            print(f"  {i}. {t['name']}{default_mark} (использовано {t['use_count']}x)")
+
+        print(f"\n{Fore.GREEN}[a]{Style.RESET_ALL} Добавить шаблон")
+        print(f"{Fore.GREEN}[d]{Style.RESET_ALL} Установить по умолчанию")
+        print(f"{Fore.GREEN}[v]{Style.RESET_ALL} Просмотреть шаблон")
+        print(f"{Fore.GREEN}[p]{Style.RESET_ALL} Показать плейсхолдеры")
+        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Назад")
+
+        choice = input(f"{Fore.GREEN}Выберите: {Style.RESET_ALL}").strip().lower()
+
+        if choice == "a":
+            name = input("  Название шаблона: ").strip()
+            if name:
+                print("  Введите текст шаблона (пустая строка = конец):")
+                lines = []
+                while True:
+                    line = input()
+                    if line == "":
+                        break
+                    lines.append(line)
+                if lines:
+                    cover_letters.add_template(name, "\n".join(lines))
+                    status(f"Шаблон '{name}' добавлен", "success")
+                    input("\nНажмите Enter...")
+
+        elif choice == "d":
+            num = input("  Номер шаблона: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                template_name = templates[int(num) - 1]["name"]
+                cover_letters.set_default(template_name)
+                status(f"'{template_name}' установлен по умолчанию", "success")
+                input("\nНажмите Enter...")
+
+        elif choice == "v":
+            num = input("  Номер шаблона: ").strip()
+            if num.isdigit() and 0 < int(num) <= len(templates):
+                t = templates[int(num) - 1]
+                print(f"\n{Fore.CYAN}--- {t['name']} ---{Style.RESET_ALL}")
+                print(t["content"])
+                print(f"{Fore.CYAN}---{Style.RESET_ALL}")
+                input("\nНажмите Enter...")
+
+        elif choice == "p":
+            print(f"\n{cover_letters.get_placeholders_help()}")
+            input("\nНажмите Enter...")
+
+        elif choice == "0":
+            break
+
+
+def select_browser():
+    """Выбор браузера при запуске."""
+    print(f"\n{Fore.CYAN}=== Выбор браузера ==={Style.RESET_ALL}")
+    print(f"{Fore.GREEN}[1]{Style.RESET_ALL} Chrome (Google Chrome)")
+    print(f"{Fore.GREEN}[2]{Style.RESET_ALL} Edge (Microsoft Edge)")
+    print(f"{Fore.GREEN}[3]{Style.RESET_ALL} Firefox (Mozilla Firefox)")
+    print(f"{Fore.GREEN}[4]{Style.RESET_ALL} Авто (попробовать все)")
+
+    choice = input(f"{Fore.GREEN}Выберите браузер [4]: {Style.RESET_ALL}").strip()
+
+    browser_map = {
+        "1": "chrome",
+        "2": "edge",
+        "3": "firefox",
+        "4": "auto",
+    }
+
+    return browser_map.get(choice, "auto")
 
 
 def parse_args():
-    """Parse command line arguments."""
+    """Разбор аргументов командной строки."""
     parser = argparse.ArgumentParser(
-        description="HeadHunter Destroyer - Automate your job search",
+        description="HeadHunter Destroyer - Автоматизация поиска работы",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python main.py                    Interactive menu
-  python main.py --boost            One-time resume boost
-  python main.py --apply            One-time mass apply
+Примеры:
+  python main.py                    Интерактивное меню
+  python main.py --boost            Разовое обновление резюме
+  python main.py --apply            Разовая рассылка
   python main.py --apply-query "python developer"
-  python main.py --daemon           Auto loop (boost every 4h, apply daily)
-  python main.py --telegram         Run with Telegram bot
-  python main.py --cover-letter     Enable cover letters
+  python main.py --daemon           Демон режим (цикл)
+  python main.py --telegram         С Telegram ботом
         """
     )
 
     parser.add_argument("--boost", action="store_true",
-                        help="One-time resume boost and exit")
+                        help="Разовое обновление резюме")
     parser.add_argument("--apply", action="store_true",
-                        help="One-time mass apply and exit")
+                        help="Разовая массовая рассылка")
     parser.add_argument("--apply-query", type=str, metavar="QUERY",
-                        help="Apply with specific search query")
+                        help="Рассылка с поисковым запросом")
     parser.add_argument("--daemon", action="store_true",
-                        help="Run in daemon mode (continuous loop)")
+                        help="Демон режим (бесконечный цикл)")
     parser.add_argument("--telegram", action="store_true",
-                        help="Run with Telegram bot for remote control")
+                        help="Запустить с Telegram ботом")
     parser.add_argument("--cover-letter", action="store_true",
-                        help="Enable cover letters for applications")
+                        help="Включить сопроводительные письма")
     parser.add_argument("--ai-letters", action="store_true",
-                        help="Use AI to generate cover letters")
+                        help="Использовать AI для писем")
     parser.add_argument("--max-apply", type=int, default=200,
-                        help="Maximum applications per run (default: 200)")
+                        help="Максимум откликов (по умолчанию: 200)")
+    parser.add_argument("--browser", type=str, choices=["chrome", "edge", "firefox", "auto"],
+                        help="Выбор браузера")
 
     return parser.parse_args()
 
 
 def run_daemon_mode(booster, applier, db, logger):
-    """Run in daemon mode - continuous loop with auto boost and apply."""
+    """Демон режим - бесконечный цикл."""
     import time as time_module
 
-    logger.info("Starting daemon mode...")
-    status("Daemon mode started. Press Ctrl+C to stop.", "info")
+    logger.info("Запуск демон режима...")
+    status("Демон режим запущен. Ctrl+C для остановки.", "info")
 
     while True:
         try:
-            # Boost resumes if possible
+            # Boost if possible
             if booster.can_update():
-                logger.info("Auto-boosting resumes...")
+                logger.info("Авто-обновление резюме...")
                 run_resume_boost(booster)
             else:
                 mins = booster.minutes_until_next_update()
-                logger.debug(f"Next boost in {mins} minutes")
+                logger.debug(f"Следующий boost через {mins} минут")
 
-            # Run mass apply
-            logger.info("Starting auto-apply...")
+            # Mass apply
+            logger.info("Запуск авто-рассылки...")
             run_mass_apply(applier)
 
-            # Wait before next cycle (4 hours)
-            logger.info("Cycle complete. Waiting 4 hours...")
+            # Wait 4 hours
+            logger.info("Цикл завершен. Ожидание 4 часа...")
             time_module.sleep(4 * 60 * 60)
 
         except KeyboardInterrupt:
-            logger.info("Daemon stopped by user")
+            logger.info("Демон остановлен пользователем")
             break
         except Exception as e:
-            logger.error(f"Daemon error: {e}")
-            time_module.sleep(60)  # Wait 1 min on error
+            logger.error(f"Ошибка демона: {e}")
+            time_module.sleep(60)
 
 
 def main():
-    """Main entry point."""
+    """Главная функция."""
     args = parse_args()
 
-    # Initialize logger
+    # Инициализация логгера
     logger = setup_logger()
     logger.log_session_start()
 
+    # Выбор браузера
+    if not args.browser and not (args.boost or args.apply or args.apply_query or args.daemon or args.telegram):
+        clear_screen()
+        print_banner()
+        selected_browser = select_browser()
+    else:
+        selected_browser = args.browser or "auto"
+
+    clear_screen()
     print_banner()
 
-    # Initialize database
-    status("Initializing database...", "info")
+    # Инициализация БД
+    status("Инициализация базы данных...", "info")
     db = Database()
     setup_default_filters(db)
 
-    # Initialize filters
+    # Инициализация фильтров
     filters = VacancyFilter(db)
 
-    # Initialize cover letters
+    # Инициализация сопроводительных писем
     cover_letters = CoverLetterManager(db)
 
-    # Initialize AI assistant (optional)
+    # Инициализация AI (опционально)
     ai_assistant = get_ai_assistant(db)
     if ai_assistant.is_enabled():
-        status(f"AI Assistant: {ai_assistant.provider} ({ai_assistant.model})", "info")
+        status(f"AI помощник: {ai_assistant.provider} ({ai_assistant.model})", "info")
 
     if SERVER_MODE:
-        ui.status("Running in SERVER MODE (headless browser)", "info")
+        ui.status("Запуск в SERVER MODE (headless браузер)", "info")
         ui.start_session()
 
-    # Setup signal handler
-    browser_manager = BrowserManager()
+    # Browser manager
+    browser_manager = BrowserManager(browser=selected_browser)
 
     def signal_handler(sig, frame):
         logger.log_session_end()
-        status("Shutting down...", "warning")
-        db.close()
-        browser_manager.stop()
+        status("Завершение работы...", "warning")
+        try:
+            db.close()
+        except:
+            pass
+        try:
+            browser_manager.stop()
+        except:
+            pass
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Start browser
-    status("Starting browser...", "info")
+    # Запуск браузера
+    status("Запуск браузера...", "info")
 
     try:
         page = browser_manager.start(use_existing_session=True)
     except Exception as e:
-        logger.error(f"Failed to start browser: {e}")
-        status(f"Failed to start browser: {e}", "error")
+        logger.error(f"Не удалось запустить браузер: {e}")
+        status(f"Ошибка запуска браузера: {e}", "error")
         if IS_WINDOWS:
-            status("Make sure the browser is closed before running", "warning")
+            status("Убедитесь что браузер закрыт перед запуском", "warning")
         sys.exit(1)
 
-    # Check login status
-    status("Checking login status...", "info")
+    # Проверка авторизации
+    status("Проверка авторизации...", "info")
     if browser_manager.is_logged_in():
-        status("Successfully connected to HH.ru!", "success")
-        logger.info("Logged in to HH.ru")
+        status("Успешное подключение к HH.ru!", "success")
+        logger.info("Авторизован на HH.ru")
     else:
-        status("Not logged in to HH.ru", "warning")
+        status("Не авторизован на HH.ru", "warning")
         if SERVER_MODE:
-            status("In server mode, login once with GUI first, then copy browser_data/ to server.", "warning")
+            status("В server mode сначала войдите с GUI, затем скопируйте browser_data/ на сервер.", "warning")
         browser_manager.wait_for_login()
 
-    # Initialize modules with all dependencies
+    # Инициализация модулей
     booster = ResumeBooster(page)
     applier = VacancyApplier(
         page,
@@ -435,21 +554,21 @@ def main():
         logger=logger
     )
 
-    # Configure cover letters if requested
+    # Настройка писем
     if args.cover_letter or args.ai_letters:
         applier.set_cover_letter_mode(
             enabled=True,
             use_ai=args.ai_letters
         )
-        status("Cover letters enabled", "info")
+        status("Сопроводительные письма включены", "info")
 
-    # Initialize Telegram bot if requested
+    # Telegram бот
     telegram_bot = None
     if args.telegram:
         try:
             from telegram_bot import HHDestroyerBot, TELEGRAM_AVAILABLE
             if not TELEGRAM_AVAILABLE:
-                status("Telegram library not installed. Run: pip install python-telegram-bot", "error")
+                status("Библиотека Telegram не установлена. Установите: pip install python-telegram-bot", "error")
             else:
                 def do_boost():
                     return booster.boost_all_resumes()
@@ -466,14 +585,14 @@ def main():
                     db=db
                 )
                 telegram_bot.run_async()
-                status(f"Telegram bot started! Owner ID: {telegram_bot.owner_id}", "success")
+                status(f"Telegram бот запущен! Owner ID: {telegram_bot.owner_id}", "success")
         except ValueError as e:
-            status(f"Telegram bot error: {e}", "error")
-            status("Set TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_ID environment variables", "warning")
+            status(f"Ошибка Telegram бота: {e}", "error")
+            status("Установите TELEGRAM_BOT_TOKEN и TELEGRAM_OWNER_ID", "warning")
         except Exception as e:
-            status(f"Failed to start Telegram bot: {e}", "error")
+            status(f"Не удалось запустить Telegram бот: {e}", "error")
 
-    # Handle CLI modes
+    # CLI режимы
     if args.daemon:
         run_daemon_mode(booster, applier, db, logger)
         logger.log_session_end()
@@ -499,105 +618,64 @@ def main():
         browser_manager.stop()
         return
 
-    # Interactive main loop
+    # Интерактивный режим
     while True:
         try:
+            clear_screen()
+            print_banner()
             choice = print_menu()
 
             if choice == "1":
                 run_resume_boost(booster)
+                input("\nНажмите Enter для продолжения...")
             elif choice == "2":
                 run_mass_apply(applier)
+                input("\nНажмите Enter для продолжения...")
             elif choice == "3":
                 params = get_search_params()
                 run_mass_apply(applier, params)
+                input("\nНажмите Enter для продолжения...")
             elif choice == "4":
                 show_stats(applier, booster, db)
+                input("\nНажмите Enter для продолжения...")
             elif choice == "5":
                 manage_filters(filters)
             elif choice == "6":
                 export_data(db)
             elif choice == "7":
                 if browser_manager.is_logged_in():
-                    status("Logged in to HH.ru", "success")
+                    status("Авторизован на HH.ru", "success")
                 else:
-                    status("Not logged in", "error")
+                    status("Не авторизован", "error")
+                input("\nНажмите Enter для продолжения...")
             elif choice == "8":
                 browser_manager.clear_session()
-                status("Session cleared. Restart to login again.", "success")
+                status("Сессия очищена. Перезапустите для входа.", "success")
+                input("\nНажмите Enter для продолжения...")
             elif choice == "9":
                 manage_cover_letters(cover_letters)
             elif choice == "0":
                 break
             else:
-                status("Invalid option", "warning")
+                status("Неверная опция", "warning")
+                input("\nНажмите Enter для продолжения...")
 
         except KeyboardInterrupt:
             break
         except Exception as e:
-            logger.error(f"Error: {e}")
-            status(f"Error: {e}", "error")
+            logger.error(f"Ошибка: {e}")
+            status(f"Ошибка: {e}", "error")
+            input("\nНажмите Enter для продолжения...")
 
-    # Cleanup
+    # Завершение
     logger.log_session_end()
-    status("Closing...", "info")
+    status("Завершение работы...", "info")
     db.close()
-    browser_manager.stop()
-    status("Goodbye!", "success")
-
-
-def manage_cover_letters(cover_letters: CoverLetterManager):
-    """Manage cover letter templates."""
-    while True:
-        print(f"\n{Fore.CYAN}[*] Cover Letter Templates:{Style.RESET_ALL}")
-        templates = cover_letters.get_all_templates()
-
-        for i, t in enumerate(templates, 1):
-            default_mark = " [DEFAULT]" if t["is_default"] else ""
-            print(f"  {i}. {t['name']}{default_mark} (used {t['use_count']}x)")
-
-        print(f"\n{Fore.GREEN}[a]{Style.RESET_ALL} Add new template")
-        print(f"{Fore.GREEN}[d]{Style.RESET_ALL} Set default template")
-        print(f"{Fore.GREEN}[v]{Style.RESET_ALL} View template")
-        print(f"{Fore.GREEN}[p]{Style.RESET_ALL} Show placeholders")
-        print(f"{Fore.GREEN}[0]{Style.RESET_ALL} Back to main menu")
-
-        choice = input(f"{Fore.GREEN}Select: {Style.RESET_ALL}").strip().lower()
-
-        if choice == "a":
-            name = input("  Template name: ").strip()
-            if name:
-                print("  Enter template content (end with empty line):")
-                lines = []
-                while True:
-                    line = input()
-                    if line == "":
-                        break
-                    lines.append(line)
-                if lines:
-                    cover_letters.add_template(name, "\n".join(lines))
-                    status(f"Template '{name}' added", "success")
-
-        elif choice == "d":
-            num = input("  Template number to set as default: ").strip()
-            if num.isdigit() and 0 < int(num) <= len(templates):
-                template_name = templates[int(num) - 1]["name"]
-                cover_letters.set_default(template_name)
-                status(f"'{template_name}' set as default", "success")
-
-        elif choice == "v":
-            num = input("  Template number to view: ").strip()
-            if num.isdigit() and 0 < int(num) <= len(templates):
-                t = templates[int(num) - 1]
-                print(f"\n{Fore.CYAN}--- {t['name']} ---{Style.RESET_ALL}")
-                print(t["content"])
-                print(f"{Fore.CYAN}---{Style.RESET_ALL}")
-
-        elif choice == "p":
-            print(f"\n{cover_letters.get_placeholders_help()}")
-
-        elif choice == "0":
-            break
+    try:
+        browser_manager.stop()
+    except:
+        pass
+    status("До свидания!", "success")
 
 
 if __name__ == "__main__":
