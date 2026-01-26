@@ -285,6 +285,8 @@ python main.py --telegram-ai
 | `/blacklist <компания>` | В черный список | `/blacklist ООО Рога` |
 | `/whitelist <компания>` | В белый список | `/whitelist Яндекс` |
 | `/filters` | Показать фильтры | `/filters` |
+| `/ai` | Статус AI и доступные модели | `/ai` |
+| `/ai_model <модель>` | Сменить модель Ollama | `/ai_model mistral` |
 
 ---
 
@@ -465,7 +467,54 @@ python main.py --telegram-ai
 tail -f browser_data/logs/hh_destroyer_*.log
 ```
 
-### 7. Уведомления
+### 7. Управление AI моделями
+
+**Посмотреть текущую модель и доступные:**
+```
+Ты: /ai
+
+Бот: 🤖 AI Assistant Status
+
+Provider: ollama
+Model: llama2
+Host: http://localhost:11434
+
+Доступные модели:
+✓ llama2:latest (3.8 GB)
+  mistral:latest (4.1 GB)
+  gemma:7b (4.8 GB)
+  codellama:latest (3.8 GB)
+
+Использование:
+/ai_model <имя_модели>
+```
+
+**Сменить модель на лету:**
+```
+Ты: /ai_model mistral
+
+Бот: ✅ Модель изменена
+
+Новая модель: mistral:latest
+
+Изменения вступят в силу для следующих запросов
+```
+
+**Популярные модели:**
+- `llama2` - универсальная, хорошо пишет по-русски (3.8 GB)
+- `llama3` - новая версия, качественнее (4.7 GB)
+- `mistral` - быстрая и качественная (4.1 GB)
+- `gemma` - от Google, легковесная (4.8 GB)
+- `codellama` - для программирования (3.8 GB)
+
+**Скачать новую модель:**
+```bash
+# На сервере где запущен Ollama
+ollama pull llama3
+ollama pull mistral
+```
+
+### 8. Уведомления
 
 Бот может отправлять проактивные уведомления (в разработке):
 - Новые приглашения на собеседование

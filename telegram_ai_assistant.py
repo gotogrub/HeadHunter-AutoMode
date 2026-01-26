@@ -125,6 +125,9 @@ class TelegramAIAssistant:
             ],
             [
                 InlineKeyboardButton("🚀 Массовая рассылка", callback_data="apply"),
+                InlineKeyboardButton("🤖 AI модели", callback_data="ai_info"),
+            ],
+            [
                 InlineKeyboardButton("🛑 Стоп", callback_data="stop"),
             ],
         ]
@@ -168,7 +171,9 @@ class TelegramAIAssistant:
             "/boost - Обновить резюме\n"
             "/blacklist `<компания>` - В черный список\n"
             "/whitelist `<компания>` - В белый список\n"
-            "/filters - Показать фильтры\n\n"
+            "/filters - Показать фильтры\n"
+            "/ai - Статус и модели AI\n"
+            "/ai_model `<модель>` - Сменить модель Ollama\n\n"
             "*Естественные запросы:*\n"
             "Просто напиши что хочешь, я пойму!\n"
             "Например:\n"
@@ -596,6 +601,118 @@ class TelegramAIAssistant:
             reply_markup=reply_markup
         )
 
+    async def cmd_ai_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /ai command - show AI info and available models."""
+        if not await self._check_owner(update):
+            return
+
+        if not self.ai or not self.ai.is_enabled():
+            await update.message.reply_text(
+                "❌ *AI не активен*\n\n"
+                "Для использования AI установи:\n\n"
+                "*OpenAI:*\n"
+                "`export OPENAI_API_KEY=sk-...`\n\n"
+                "*Ollama (локальный):*\n"
+                "`ollama serve`\n"
+                "`export OLLAMA_MODEL=llama2`",
+                parse_mode="Markdown"
+            )
+            return
+
+        message = "🤖 *AI Assistant Status*\n\n"
+        message += f"*Provider:* {self.ai.provider}\n"
+        message += f"*Model:* {self.ai.model}\n"
+
+        if self.ai.provider == "ollama":
+            message += f"*Host:* {self.ai.client.get('host', 'unknown')}\n\n"
+
+            # Get available models
+            try:
+                import requests
+                response = requests.get(f"{self.ai.client['host']}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models = response.json().get('models', [])
+                    if models:
+                        message += "*Доступные модели:*\n"
+                        for model in models[:10]:  # Show first 10
+                            model_name = model.get('name', 'unknown')
+                            size = model.get('size', 0)
+                            size_gb = round(size / (1024**3), 1)
+
+                            current = "✓ " if model_name.startswith(self.ai.model) else "  "
+                            message += f"{current}`{model_name}` ({size_gb} GB)\n"
+
+                        message += "\n*Использование:*\n"
+                        message += "`/ai_model <имя_модели>`"
+                    else:
+                        message += "Модели не найдены"
+            except Exception as e:
+                message += f"Ошибка получения моделей: {e}"
+
+        elif self.ai.provider == "openai":
+            message += f"*API Key:* {self.ai.client.api_key[:10]}...\n"
+
+        await update.message.reply_text(message, parse_mode="Markdown")
+
+    async def cmd_ai_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /ai_model command - change AI model."""
+        if not await self._check_owner(update):
+            return
+
+        if not self.ai or not self.ai.is_enabled():
+            await update.message.reply_text("❌ AI не активен")
+            return
+
+        if self.ai.provider != "ollama":
+            await update.message.reply_text(
+                "⚠️ Смена модели доступна только для Ollama\n"
+                "Для OpenAI используй переменную окружения OPENAI_MODEL"
+            )
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "Использование: `/ai_model <имя_модели>`\n\n"
+                "Пример: `/ai_model mistral`\n\n"
+                "Посмотреть доступные модели: `/ai`",
+                parse_mode="Markdown"
+            )
+            return
+
+        new_model = " ".join(context.args)
+
+        # Verify model exists
+        try:
+            import requests
+            response = requests.get(f"{self.ai.client['host']}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                model_names = [m.get('name', '') for m in models]
+
+                # Check if model exists (with fuzzy matching)
+                model_found = None
+                for model_name in model_names:
+                    if new_model in model_name or model_name.startswith(new_model):
+                        model_found = model_name
+                        break
+
+                if model_found:
+                    self.ai.model = model_found
+                    await update.message.reply_text(
+                        f"✅ *Модель изменена*\n\n"
+                        f"Новая модель: `{model_found}`\n\n"
+                        "Изменения вступят в силу для следующих запросов",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"❌ Модель `{new_model}` не найдена\n\n"
+                        f"Доступные модели:\n" + "\n".join(f"• `{m}`" for m in model_names[:10]),
+                        parse_mode="Markdown"
+                    )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка: {e}")
+
     # ============ Natural Language Processing ============
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -679,6 +796,8 @@ class TelegramAIAssistant:
             await self.cmd_whitelist(update, context)
         elif data == "export":
             await self._export_csv(query)
+        elif data == "ai_info":
+            await self.cmd_ai_info(update, context)
 
     # ============ Helper Methods ============
 
@@ -1052,6 +1171,8 @@ class TelegramAIAssistant:
         self.app.add_handler(CommandHandler("blacklist", self.cmd_blacklist))
         self.app.add_handler(CommandHandler("whitelist", self.cmd_whitelist))
         self.app.add_handler(CommandHandler("filters", self.cmd_filters))
+        self.app.add_handler(CommandHandler("ai", self.cmd_ai_info))
+        self.app.add_handler(CommandHandler("ai_model", self.cmd_ai_model))
 
         # Callbacks
         self.app.add_handler(CallbackQueryHandler(self.handle_callback))
