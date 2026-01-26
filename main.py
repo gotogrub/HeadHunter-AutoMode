@@ -19,6 +19,13 @@ from cover_letters import CoverLetterManager
 from ai_assistant import get_ai_assistant
 from logger import setup_logger, get_logger
 
+# Telegram bot (опционально)
+try:
+    from telegram_bot import run_standalone_bot
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    TELEGRAM_AVAILABLE = False
+
 # Colorama
 try:
     from colorama import init, Fore, Style
@@ -604,10 +611,24 @@ def select_browser():
 def parse_args():
     """Аргументы командной строки."""
     parser = argparse.ArgumentParser(description="HeadHunter Destroyer V2")
-    parser.add_argument("--browser", choices=["chrome", "edge", "firefox", "auto"])
-    parser.add_argument("--boost", action="store_true", help="Обновить резюме")
-    parser.add_argument("--apply", action="store_true", help="Массовая рассылка")
-    parser.add_argument("--max-apply", type=int, default=200)
+    parser.add_argument("--browser", choices=["chrome", "edge", "firefox", "auto"],
+                        help="Выбор браузера")
+    parser.add_argument("--boost", action="store_true",
+                        help="Обновить резюме (одноразово)")
+    parser.add_argument("--apply", action="store_true",
+                        help="Массовая рассылка откликов")
+    parser.add_argument("--apply-query", type=str,
+                        help="Поисковый запрос для вакансий")
+    parser.add_argument("--max-apply", type=int, default=200,
+                        help="Максимальное количество откликов")
+    parser.add_argument("--cover-letter", action="store_true",
+                        help="Использовать сопроводительные письма")
+    parser.add_argument("--ai-letters", action="store_true",
+                        help="Генерировать письма через AI")
+    parser.add_argument("--daemon", action="store_true",
+                        help="Daemon режим (бесконечный цикл)")
+    parser.add_argument("--telegram", action="store_true",
+                        help="Запустить Telegram бота")
     return parser.parse_args()
 
 
@@ -640,6 +661,16 @@ def main():
     global browser_manager, logger, shutdown_in_progress
 
     args = parse_args()
+
+    # Telegram бот (не требует браузера)
+    if args.telegram:
+        if not TELEGRAM_AVAILABLE:
+            print(f"{Fore.RED}Ошибка: Telegram bot не доступен. Установите: pip install python-telegram-bot{Style.RESET_ALL}")
+            sys.exit(1)
+
+        print(f"{Fore.CYAN}Запуск Telegram бота...{Style.RESET_ALL}")
+        run_standalone_bot()
+        return
 
     # Логгер
     logger = setup_logger()
@@ -717,8 +748,64 @@ def main():
 
     if args.apply:
         params = {"_max_applications": args.max_apply}
+
+        # Поисковый запрос
+        if args.apply_query:
+            params["text"] = args.apply_query
+
+        # Cover letters
+        if args.cover_letter:
+            applier.use_cover_letter = True
+            log_and_print("Включены сопроводительные письма (шаблоны)", "info")
+
+        # AI letters
+        if args.ai_letters:
+            if ai_assistant.is_enabled():
+                applier.use_ai_letters = True
+                log_and_print(f"Включена AI-генерация писем ({ai_assistant.provider})", "info")
+            else:
+                log_and_print("AI помощник не доступен, используются обычные шаблоны", "warning")
+                applier.use_cover_letter = True
+
         run_mass_apply(applier, params)
         safe_cleanup()
+        return
+
+    # Daemon режим
+    if args.daemon:
+        log_and_print("Запуск в daemon режиме...", "info")
+        log_and_print("Бот будет обновлять резюме каждые 4 часа и искать новые вакансии", "info")
+
+        import time
+
+        try:
+            while not shutdown_in_progress:
+                # Обновить резюме
+                log_and_print("\n=== Обновление резюме ===", "info")
+                run_resume_boost(booster)
+
+                # Массовая рассылка
+                log_and_print("\n=== Массовая рассылка ===", "info")
+                params = {
+                    "_max_applications": args.max_apply,
+                    "text": args.apply_query if args.apply_query else ""
+                }
+
+                if args.cover_letter:
+                    applier.use_cover_letter = True
+                if args.ai_letters and ai_assistant.is_enabled():
+                    applier.use_ai_letters = True
+
+                run_mass_apply(applier, params)
+
+                # Ждать 4 часа
+                log_and_print("\n=== Следующий запуск через 4 часа ===", "info")
+                time.sleep(4 * 60 * 60)  # 4 часа
+
+        except KeyboardInterrupt:
+            log_and_print("\nDaemon режим остановлен", "warning")
+        finally:
+            safe_cleanup()
         return
 
     # Интерактивный режим
