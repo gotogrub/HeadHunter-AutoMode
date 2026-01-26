@@ -713,6 +713,8 @@ def parse_args():
                         help="Daemon режим (бесконечный цикл)")
     parser.add_argument("--telegram", action="store_true",
                         help="Запустить Telegram бота")
+    parser.add_argument("--profile", type=str,
+                        help="Имя профиля для мультиаккаунта (default, work, etc.)")
     return parser.parse_args()
 
 
@@ -745,6 +747,13 @@ def main():
     global browser_manager, logger, shutdown_in_progress
 
     args = parse_args()
+
+    # Multi-account support через профили
+    if args.profile:
+        profile_name = args.profile
+        # Установить профиль в переменную окружения для browser.py
+        os.environ["HH_PROFILE"] = profile_name
+        print(f"{Fore.CYAN}Использование профиля: {profile_name}{Style.RESET_ALL}")
 
     # Telegram бот (не требует браузера)
     if args.telegram:

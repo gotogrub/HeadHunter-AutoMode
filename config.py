@@ -88,4 +88,6 @@ DEFAULT_SEARCH_PARAMS = {
 }
 
 # User data directory for browser profile
-USER_DATA_DIR = "./browser_data"
+# Поддержка мультиаккаунта через переменную окружения HH_PROFILE
+_profile = os.environ.get("HH_PROFILE", "default")
+USER_DATA_DIR = f"./browser_data_{_profile}" if _profile != "default" else "./browser_data"
